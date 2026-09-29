@@ -1,23 +1,23 @@
 {
   "schema": 1,
-  "archive_name": "WushuBridge-Portable-Experimental-20260929-Final-Windows.zip",
-  "archive_bytes": 3721611156,
-  "archive_sha256": "1134b8cd97fc4fd06d4bc98cddc56899813567019b888279df667eae75e23f03",
+  "archive_name": "WushuBridge-Portable-Windows-v0.1.1.zip",
+  "archive_bytes": 3721611625,
+  "archive_sha256": "3101bbca077dc8701ad0eb9d0836bc3284e9ae79f85572cc752ee57d32d942ae",
   "parts": [
     {
-      "name": "WushuBridge-Portable-Windows-v0.1.0.zip.part01",
+      "name": "WushuBridge-Portable-Windows-v0.1.1.zip.part01",
       "bytes": 1500000000,
-      "sha256": "af3f1d0b60808927b18a70f37bf092898277ba0e4be08e8d8430413ad6275717"
+      "sha256": "ce1876a554f0814c4aa22b8123c1471baff044780c0651711e7f7517c7e46b0d"
     },
     {
-      "name": "WushuBridge-Portable-Windows-v0.1.0.zip.part02",
+      "name": "WushuBridge-Portable-Windows-v0.1.1.zip.part02",
       "bytes": 1500000000,
-      "sha256": "170fda6647875690bb35498437b166ed7f777eefc6d0a1602b4d7b23812d4cab"
+      "sha256": "b5f15ba9c475c9618ce921a6d6fe5baf8aeaa46e8ba794607018b1c21b30f16b"
     },
     {
-      "name": "WushuBridge-Portable-Windows-v0.1.0.zip.part03",
-      "bytes": 721611156,
-      "sha256": "e81cd53ecfad1cd4f1b41f6e15616f993a85c187231b1bb25fa5a071cd22d357"
+      "name": "WushuBridge-Portable-Windows-v0.1.1.zip.part03",
+      "bytes": 721611625,
+      "sha256": "2df873350ddd3108d02f152648eacacdf2dc9ee210591a4cf636b467e7c9daeb"
     }
   ]
 }
