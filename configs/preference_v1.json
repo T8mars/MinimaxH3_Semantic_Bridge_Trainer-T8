@@ -1,0 +1,8 @@
+{
+  "arch": "trans", "hidden": 256, "layers": 2, "heads": 4,
+  "bridge_epochs": 150, "batch_size": 8,
+  "bridge_lr": 0.0003, "weight_decay": 0.01, "anchor_weight": 0.15,
+  "alpha_min": 0.05, "alpha_max": 0.35,
+  "max_seq_tokens": 2048, "patience": 12,
+  "seed": 1234, "device": "auto", "amp": true, "magnitude_mode": "none"
+}

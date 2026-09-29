@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "archive_name": "WushuBridge-Portable-Experimental-20260929-Final-Windows.zip",
+  "archive_bytes": 3721611156,
+  "archive_sha256": "1134b8cd97fc4fd06d4bc98cddc56899813567019b888279df667eae75e23f03",
+  "parts": [
+    {
+      "name": "WushuBridge-Portable-Windows-v0.1.0.zip.part01",
+      "bytes": 1500000000,
+      "sha256": "af3f1d0b60808927b18a70f37bf092898277ba0e4be08e8d8430413ad6275717"
+    },
+    {
+      "name": "WushuBridge-Portable-Windows-v0.1.0.zip.part02",
+      "bytes": 1500000000,
+      "sha256": "170fda6647875690bb35498437b166ed7f777eefc6d0a1602b4d7b23812d4cab"
+    },
+    {
+      "name": "WushuBridge-Portable-Windows-v0.1.0.zip.part03",
+      "bytes": 721611156,
+      "sha256": "e81cd53ecfad1cd4f1b41f6e15616f993a85c187231b1bb25fa5a071cd22d357"
+    }
+  ]
+}

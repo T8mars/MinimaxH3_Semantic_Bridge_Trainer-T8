@@ -1,0 +1,5 @@
+# Use the CUDA build appropriate for your GPU. Do not replace a working
+# ComfyUI runtime just to install this file.
+torch>=2.3
+numpy>=1.24
+safetensors>=0.4

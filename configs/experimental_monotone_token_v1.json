@@ -1,0 +1,12 @@
+{
+  "arch": "trans", "hidden": 256, "layers": 2, "heads": 4,
+  "bridge_epochs": 150, "judge_epochs": 200, "batch_size": 8,
+  "judge_batch_size": 32, "bridge_lr": 0.0003, "judge_lr": 0.001,
+  "weight_decay": 0.01, "anchor_weight": 0.0, "abs_weight": 0.3,
+  "alpha_min": 0.2, "alpha_max": 0.2, "max_seq_tokens": 2048,
+  "patience": 12, "judge_patience": 20, "seed": 1234,
+  "device": "auto", "amp": true, "magnitude_mode": "per_token",
+  "residual_skip": true, "residual_scale": 0.1,
+  "bridge_val_min_delta": 0.0001,
+  "semantic_objective": "monotone_token_identity_v1"
+}
