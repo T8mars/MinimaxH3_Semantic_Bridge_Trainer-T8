@@ -6,7 +6,7 @@
 
 1. 从[最新 Release](https://github.com/T8mars/MinimaxH3_Semantic_Bridge_Trainer-T8/releases/latest)下载全部 3 个 `part` 文件、`RELEASE_PARTS.json` 和 `Join-Release.ps1`，放在同一目录。
 2. 运行 `powershell -ExecutionPolicy Bypass -File .\Join-Release.ps1`，解压得到的 ZIP，双击 `WushuBridge-Trainer.exe`。便携包自带 Python；训练需自备与 H3 推理一致的文本编码器。
-3. 用自己的 `bad/good` 训练对和独立输出目录训练。详见[训练说明](docs/可复用训练器.md)；发行包中的 `plugin/ComfyUI-H3-WushuBridge/` 是旧接线实现，T8 节点的安装和模型目录以[新版推理说明](docs/便携整合包.md#将-semantic-bridge-接入现有-comfyui)为准。
+3. 用自己的 `bad/good` 训练对和独立输出目录训练。最新版 T8 节点可加载本训练器导出的 `trans` 或 `mlp` 桥权重；详见[训练说明](docs/可复用训练器.md)与[推理接线](docs/便携整合包.md#将-semantic-bridge-接入现有-comfyui)。发行包中的 `plugin/ComfyUI-H3-WushuBridge/` 是旧接线实现。
 
 **配套模型：**[T8 Comic Combat Semantic Bridge](https://huggingface.co/t8star/semantic_bridge_T8-comic-combat)。放入 `ComfyUI/models/semantic_bridge/t8_compat/`，使用最新版 T8 节点的 Semantic Bridge 配置／应用节点。实际同提示词对比中，部分复杂连续动作场景有局部改善；建议在自己的工作流中做开／关桥 A/B。
 
