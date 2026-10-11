@@ -53,6 +53,9 @@ def main(argv=None):
     inspect.add_argument("--require-supervision", choices=("numeric_scores", "preference_only"),
                          help="Reject data of another supervision type before encoding")
     inspect.add_argument("--video-feedback-root", help="Explicit private root of bound two-seed full-AV evidence")
+    auto_split = sub.add_parser("auto-split", help="Generate/reuse a source-bound split for authored preferences; no H3 loading")
+    auto_split.add_argument("pairs")
+    auto_split.add_argument("--output", required=True)
     pairs = sub.add_parser("pairs", help="Build fresh text pairs using the author's degradation rules")
     pairs.add_argument("--corpus", nargs="+", required=True)
     pairs.add_argument("--output", required=True)
@@ -136,6 +139,13 @@ def main(argv=None):
                          video_feedback_root=args.video_feedback_root,
                          selection_policy=args.selection_policy)
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "auto-split":
+        from tools.prepare_preference_split import prepare_split
+        try:
+            report = prepare_split(args.pairs, args.output)
+        except (ValueError, OSError) as error:
+            parser.exit(2, "自动分组未完成：" + str(error) + "\n")
+        print(json.dumps(report, ensure_ascii=False, indent=2))
     elif args.command == "inspect":
         rows = read_pairs(args.pairs, video_feedback_root=args.video_feedback_root)
         report = {**inspect_pairs(rows), "sha256":sha256(args.pairs)}

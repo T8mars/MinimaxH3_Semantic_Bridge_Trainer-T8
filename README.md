@@ -6,7 +6,7 @@ MiniMax H3 **语义桥文本条件训练器**，包含 Windows EXE、命令行�
 
 1. 从[最新 Release](https://github.com/T8mars/MinimaxH3_Semantic_Bridge_Trainer-T8/releases/latest)下载 `Windows-NoPython.zip`，解压后双击 `WushuBridge-Trainer.exe`。这是轻量包，**不含 Python、ComfyUI、大模型和视频**。已有完整包用户直接使用启动器更新。
 2. 轻量包选择现有 **Python 3.10+**（PyTorch 2.3+、NumPy、safetensors）、可运行 H3 编码的 **ComfyUI 环境**和实际 H3 文本编码器。完整包自动使用内置环境。依赖检查通过后再训练，不自动安装大模型或修改其他项目。
-3. 自己的数据优先选“无评分偏好对：仅语义桥”，更换 JSONL 和配套分组，其余保持默认。[怎么训练](如何训练.md) · [数据格式与示例](训练集制作.md) · [交给 Agent 制作并训练](AGENT交接.md)。内置676对作者公开评分文本和8对格式示例；8对仅供学习格式。
+3. 自己的数据优先选“无评分偏好对：仅语义桥”，选择带场景编号的 JSONL，保持“自动（推荐）”即可自动分组，其他默认可保留。[怎么训练](如何训练.md) · [数据格式与示例](训练集制作.md) · [交给 Agent 制作并训练](AGENT交接.md)。内置676对作者公开评分文本和8对格式示例；8对仅供学习格式。
 4. 输出 `bridge.safetensors`、`模型使用说明.md`、`inference_settings.json`。按该模型的说明设置 alpha、幅度模式和 chunk；普通配方的0.12是试用起点，不是自动验证的最佳值。
 
 **训练轮次：** 界面可直接设语义桥最大轮次（默认150）；数值评分模式可另设JEV。早停仍生效，续训自动沿用原任务轮次。Windows断点保存会重试短暂文件占用，并阻止同目录并发写入。

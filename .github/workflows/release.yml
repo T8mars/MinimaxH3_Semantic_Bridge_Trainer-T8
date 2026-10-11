@@ -47,6 +47,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Packaged CLI pipeline failed; release not published' }
       - name: Verify Windows checkpoint sharing locks and 150 successive writes
         run: python -B -m unittest discover -s tests -p test_checkpoint_io.py -v
+      - name: Verify automatic preference splits and source-bound reuse
+        run: python -B -m unittest discover -s tests -p test_auto_split.py -v
       - name: Verify the actual packaged launcher and epoch controls
         shell: pwsh
         run: |
@@ -59,7 +61,7 @@ jobs:
           $process = Start-Process -FilePath (Join-Path $root 'WushuBridge-Trainer.exe') -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
           if ($process.ExitCode -ne 0) { Get-Content -LiteralPath (Join-Path $output 'self-test-error.txt'); throw 'Packaged launcher failed; release not published' }
           $checks = Get-Content -LiteralPath (Join-Path $output 'self-test.json') -Raw | ConvertFrom-Json
-          if ($checks.Count -ne 18) { throw 'Incomplete launcher regressions; release not published' }
+          if ($checks.Count -ne 20) { throw 'Incomplete launcher regressions; release not published' }
       - name: Publish Release
         shell: pwsh
         env:
@@ -74,12 +76,14 @@ jobs:
           Windows 轻量训练器／整合包程序更新：不含 Python、ComfyUI、大模型和视频。
           下载 Windows-NoPython.zip，解压后运行 WushuBridge-Trainer.exe。新用户选择现有 Python 3.10+ 和 H3 ComfyUI 环境；已有新版完整包在启动器点“安装更新”。
           内置676对公开评分文本、8对格式示例、训练集制作及 Agent 交接文档。训练后自动导出模型专属参数说明。更新保留运行环境、模型、用户数据、训练输出与已有配置。
+          普通自编偏好数据默认自动生成训练／验证／测试划分；选择JSONL即可，不需手写分组文件。续训沿用原划分，也可取消自动使用自定义清单。
           SHA256SUMS.txt 为校验值；update.json 供启动器检查更新。软件测试不代表视频质量验证。
 
           ## English
           Lightweight Windows trainer and full-bundle app update. No Python, ComfyUI, large models or videos included.
           Extract Windows-NoPython.zip and launch WushuBridge-Trainer.exe. New users supply Python 3.10+ and an H3-capable ComfyUI environment; full-bundle users update in the launcher.
           Includes public starter data, dataset instructions, Agent handoff and model-specific inference guides. Updates preserve runtimes, models, user data, outputs and existing settings/configs.
+          Authored preferences now split automatically by scene groups/shared text. Select the JSONL; no hand-written split file is required. Resume retains the original split; manual splits remain available.
           SHA256SUMS.txt contains checksums; update.json is used by the updater. Software tests are not video-quality evidence.
           '@ | Set-Content -LiteralPath release-notes.md -Encoding utf8
           gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "$tag · By T8star · Windows NoPython" --notes-file release-notes.md --latest dist/*.zip dist/update.json dist/SHA256SUMS.txt

@@ -49,8 +49,12 @@ def smoke(root,work,dataset=None,split=None,legacy_receipt=False,epochs=None,dev
     config_path=work/'software_check.json';dump(config_path,config)
     run=work/'cli_run'
     cli=root/'tools/trainer.py'
-    common=['train',str(dataset),'--output',str(run),'--config',str(config_path),'--stage','bridge','--split-manifest',str(split),'--epochs',str(epoch_limit)]
+    generated_split=work/'automatic_split.json'
+    common=['train',str(dataset),'--output',str(run),'--config',str(config_path),'--stage','bridge','--split-manifest',str(generated_split),'--epochs',str(epoch_limit)]
     commands=[
+        ['auto-split',str(root/'datasets/preference_example.jsonl'),'--output',str(generated_split)],
+        ['auto-split',str(root/'datasets/preference_example.jsonl'),'--output',str(generated_split)],
+        ['inspect',str(root/'datasets/preference_example.jsonl'),'--require-supervision','preference_only','--split-manifest',str(generated_split)],
         ['inspect',str(root/'datasets/preference_example.jsonl'),'--require-supervision','preference_only','--split-manifest',str(split)],
         common+['--stop-after-epochs','1'],common+['--resume'],
         ['verify','--bridge',str(run/'bridge.safetensors'),'--bridge-only','--report',str(work/'verification.json')],
@@ -72,6 +76,7 @@ def smoke(root,work,dataset=None,split=None,legacy_receipt=False,epochs=None,dev
     assert guidance['model_sha256']==weight_hash
     assert not guidance['video_calibrated_by_this_export']
     provenance=json.loads((run/'run.json').read_text(encoding='utf-8'))
+    assert json.loads((run/'source_split_manifest.json').read_text(encoding='utf-8'))==json.loads(generated_split.read_text(encoding='utf-8'))
     assert provenance['identity']['upstream_commit']==expected
     assert provenance['status']=='completed'
     assert provenance['config']['bridge_epochs']==epoch_limit
@@ -83,7 +88,7 @@ def smoke(root,work,dataset=None,split=None,legacy_receipt=False,epochs=None,dev
     assert not list(run.glob('*.pending'))
     assert not (run/'judge.safetensors').exists()
     receipt={'status':'passed','steps':len(commands),'dimension':5120,'config_hidden':config['hidden'],
-        'source_commit':expected,'resume':True,'weight_reload_verify':True,'deployment_guide_sha_binding':True,
+        'source_commit':expected,'resume':True,'automatic_split_created_reused_and_trained':True,'weight_reload_verify':True,'deployment_guide_sha_binding':True,
         'epoch_limit':epoch_limit,'epochs_completed':checkpoint['epoch'],'device':device,'amp':amp,
         'last_checkpoint_reloaded':True,'early_stopping_verified':checkpoint['epoch']<epoch_limit,
         'both_magnitude_validation_diagnostics':True,'scope':kind,'seconds':round(time.monotonic()-started)}

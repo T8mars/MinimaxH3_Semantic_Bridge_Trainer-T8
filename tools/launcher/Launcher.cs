@@ -68,6 +68,7 @@ namespace WushuBridgeLauncher
         FlowLayoutPanel epochControls;
         Label epochLabel;
         readonly CheckBox allRows = new CheckBox();
+        readonly CheckBox autoSplit = new CheckBox { Text = "自动（推荐）", Checked = true, AutoSize = true };
         readonly Label modeSummary = new Label();
         readonly Button stop = new Button();
         readonly object processLock = new object();
@@ -158,7 +159,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
             fields.Controls.Add(new Label { Text = "训练方式", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 12);
             trainingMode.DropDownStyle = ComboBoxStyle.DropDownList;
-            trainingMode.Items.AddRange(new object[] { "数值评分数据：语义桥 + JEV（原流程）", "无评分偏好对：仅语义桥（必须选择分组划分）", "实验：等长逐 token 对齐 + identity（仅语义桥）", "实验：变长 token 单调映射 + identity（仅语义桥）", "实验：显式句段目标拟合（CPU，仅语义桥）" });
+            trainingMode.Items.AddRange(new object[] { "数值评分数据：语义桥 + JEV（原流程）", "无评分偏好对：仅语义桥（默认自动分组）", "实验：等长逐 token 对齐 + identity（仅语义桥）", "实验：变长 token 单调映射 + identity（仅语义桥）", "实验：显式句段目标拟合（CPU，仅语义桥）" });
             trainingMode.Dock = DockStyle.Fill; trainingMode.Margin = new Padding(0, 7, 8, 5);
             fields.Controls.Add(trainingMode, 1, 12); editable.Add(trainingMode);
             allRows.Text = "全变体"; allRows.Dock = DockStyle.Fill; allRows.Margin = new Padding(0, 7, 0, 5);
@@ -183,6 +184,11 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             help.SetToolTip(bridgeEpochs, "最多训练多少轮。新任务可调整；早停仍由 patience 控制。不会修改原 JSON。");
             help.SetToolTip(judgeEpochs, "仅数值评分模式训练 JEV；偏好模式不使用。");
             paths["Config"].TextChanged += delegate { RefreshEpochDefaults(); };
+            autoSplit.CheckedChanged += delegate { RefreshPathHints(); };
+            paths["VideoFeedbackRoot"].TextChanged += delegate { RefreshPathHints(); };
+            paths["Pairs"].TextChanged += delegate {
+                if (!restoringSettings && !busy && UseAutoSplit()) paths["SplitManifest"].Clear();
+            };
 
             var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
             layout.Controls.Add(actions, 0, 3);
@@ -340,6 +346,19 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             var hint = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.DimGray, Font = new Font(Font.FontFamily, 8.5F), Margin = new Padding(8, 0, 0, 0) };
             panel.Controls.Add(hint, 3, row); pathHints[key] = hint;
             pathControls[key] = new Control[] { label, box, browse, hint };
+            if (key == "SplitManifest")
+            {
+                panel.Controls.Remove(box);
+                var choice = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0) };
+                choice.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+                choice.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+                autoSplit.Margin = new Padding(0, 9, 6, 0);
+                choice.Controls.Add(autoSplit, 0, 0); choice.Controls.Add(box, 1, 0);
+                panel.Controls.Add(choice, 1, row);
+                editable.Add(autoSplit);
+                // The wrapper must follow the same visibility rules as its row.
+                pathControls[key] = new Control[] { label, choice, box, browse, hint };
+            }
             box.TextChanged += delegate { RefreshPathHints(); };
             if (key == "PreparedDirectory") alignedFields.AddRange(new Control[] { label, box, browse, hint });
             browse.Click += delegate
@@ -417,7 +436,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                     : key == "ComfyRoot" ? "自动：包内 H3 编码源码，通常不用修改"
                     : key == "Encoder" ? (File.Exists(value) ? "已找到编码器；请核对与实际推理版本一致" : "必选：另备 H3 文本编码器，与推理版本一致")
                     : key == "Pairs" ? (value == PreferencePairs() && value != "" ? "8对格式示例；正式训练请换自己的 JSONL" : value == AuthorPairs() ? "内置作者676对；数值模式同时训练 JEV" : "自备：审核过的 bad/good 训练对 JSONL")
-                    : key == "SplitManifest" ? (trainingMode.SelectedIndex == 0 ? "数值模式无需填写，可留空" : value == PreferenceSplit() && value != "" ? "示例配套分组；自训时与 JSONL 一起更换" : "必选：与上方 JSONL 匹配的分组划分")
+                    : key == "SplitManifest" ? (trainingMode.SelectedIndex == 0 ? "数值模式无需填写，可留空" : UseAutoSplit() ? "自动：开始/检查时生成；续训保留原划分，无需填写" : "手动：选择与 JSONL 配套的分组；普通自编数据可勾选自动")
                     : key == "Dataset" ? "自动：首次由程序生成；换数据点新输出目录"
                     : key == "RunDirectory" ? "自动：新运行目录；续训时选原目录"
                     : key == "Config" ? "自动：随训练方式切换；初次保留默认"
@@ -429,6 +448,44 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 item.Value.ForeColor = note.StartsWith("必选") || note.Contains("格式示例") || note.Contains("示例配套") ? Color.FromArgb(160, 88, 0) : Color.DimGray;
                 help.SetToolTip(item.Value, note); help.SetToolTip(paths[key], note + "\n" + value);
             }
+            RefreshAutoSplitControls();
+        }
+
+        bool UseAutoSplit()
+        {
+            return autoSplit.Checked && trainingMode.SelectedIndex == 1
+                && String.IsNullOrWhiteSpace(paths["VideoFeedbackRoot"].Text);
+        }
+
+        void RefreshAutoSplitControls()
+        {
+            bool supported = trainingMode.SelectedIndex == 1 && String.IsNullOrWhiteSpace(paths["VideoFeedbackRoot"].Text);
+            autoSplit.Enabled = supported && !busy;
+            paths["SplitManifest"].ReadOnly = UseAutoSplit();
+            var browse = pathControls["SplitManifest"].OfType<Button>().Single();
+            browse.Enabled = !busy && trainingMode.SelectedIndex != 0 && !UseAutoSplit();
+            help.SetToolTip(autoSplit, "普通自编偏好数据默认自动生成训练/验证/测试划分。取消勾选可手动选择；真实视频反馈与实验模式保留人工划分。");
+        }
+
+        internal static bool AutoSplitRequested(Dictionary<string, string> s)
+        {
+            string automatic, evidence;
+            return s["TrainingMode"] == "preference_only" && s.TryGetValue("AutoSplit", out automatic) && automatic == "true"
+                && (!s.TryGetValue("VideoFeedbackRoot", out evidence) || String.IsNullOrWhiteSpace(evidence));
+        }
+
+        void ResolveSplitSettings(Dictionary<string, string> s, bool resume)
+        {
+            if (!AutoSplitRequested(s)) return;
+            if (resume)
+            {
+                string saved = Path.Combine(s["RunDirectory"], "source_split_manifest.json");
+                if (!File.Exists(saved)) throw new Exception("原任务没有保存分组清单。请取消自动并选择原分组文件；续训不会重新划分数据。");
+                s["SplitManifest"] = saved;
+            }
+            else if (File.Exists(s["Pairs"]))
+                s["SplitManifest"] = Path.Combine(root, "local", "splits", FileSha(s["Pairs"]) + ".json");
+            paths["SplitManifest"].Text = s["SplitManifest"];
         }
 
         void LoadSettings(bool loadSavedSettings)
@@ -464,6 +521,9 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                     if (mode != null) trainingMode.SelectedIndex = mode.Value == ExplicitMode ? 4 : mode.Value == "numeric_scores" ? 0 : mode.Value == "aligned_token_identity_v1" ? 2 : mode.Value == "monotone_token_identity_v1" ? 3 : 1;
                     var policy = doc.Root.Element("SelectionPolicy");
                     if (policy != null) allRows.Checked = policy.Value == "all_rows";
+                    var automatic = doc.Root.Element("AutoSplit");
+                    autoSplit.Checked = automatic != null ? automatic.Value != "false"
+                        : String.IsNullOrWhiteSpace(paths["SplitManifest"].Text) || paths["SplitManifest"].Text == PreferenceSplit();
                     var updates = doc.Root.Element("AutoCheckUpdates");
                     if (updates != null) autoUpdate.Checked = updates.Value != "false";
                     decimal saved;
@@ -482,6 +542,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             snapshot["TrainingMode"] = trainingMode.SelectedIndex == 4 ? ExplicitMode : trainingMode.SelectedIndex == 3 ? "monotone_token_identity_v1" : trainingMode.SelectedIndex == 2 ? "aligned_token_identity_v1" : trainingMode.SelectedIndex == 1 ? "preference_only" : "numeric_scores";
             snapshot["SelectionPolicy"] = allRows.Checked ? "all_rows" : "one_per_group";
             snapshot["AutoCheckUpdates"] = autoUpdate.Checked ? "true" : "false";
+            snapshot["AutoSplit"] = autoSplit.Checked ? "true" : "false";
             snapshot["BridgeEpochs"] = bridgeEpochs.Value.ToString(CultureInfo.InvariantCulture);
             snapshot["JudgeEpochs"] = judgeEpochs.Value.ToString(CultureInfo.InvariantCulture);
             return snapshot;
@@ -936,8 +997,8 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                     throw new Exception(key + " 必须是完整路径。");
             if (!s["Dataset"].EndsWith(".npz", StringComparison.OrdinalIgnoreCase))
                 throw new Exception("编码数据集路径必须以 .npz 结尾。");
-            if (s["TrainingMode"] != "numeric_scores" && !File.Exists(s["SplitManifest"]))
-                throw new Exception("无评分偏好模式必须选择覆盖全部 group_id 的分组划分 JSON。");
+            if (s["TrainingMode"] != "numeric_scores" && !AutoSplitRequested(s) && !File.Exists(s["SplitManifest"]))
+                throw new Exception("请选择与数据配套的分组 JSON；普通自编偏好数据可勾选“自动（推荐）”。");
             string evidenceRoot;
             if (s.TryGetValue("VideoFeedbackRoot", out evidenceRoot) && !String.IsNullOrWhiteSpace(evidenceRoot) && !Directory.Exists(evidenceRoot))
                 throw new Exception("视频反馈证据目录不存在：" + evidenceRoot);
@@ -982,6 +1043,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             var settings = Snapshot();
             try
             {
+                ResolveSplitSettings(settings, resume);
                 Validate(settings, resume, checkOnly);
                 if (settings["TrainingMode"] != ExplicitMode) {
                     var selectedEpochs = EpochOptions(settings, resume);
@@ -1000,13 +1062,17 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 stop.Enabled = true;
                 Append("\n日志：" + logPath);
                 var plan = Plan(settings, resume);
-                File.WriteAllText(logPath + ".plan.json", new JavaScriptSerializer().Serialize(new { training_mode = settings["TrainingMode"], check_only = checkOnly, python = settings["Python"], commands = plan }), new UTF8Encoding(false));
+                string[] splitCommand = AutoSplitRequested(settings) && !resume ? new[] { "auto-split", settings["Pairs"], "--output", settings["SplitManifest"] } : null;
+                File.WriteAllText(logPath + ".plan.json", new JavaScriptSerializer().Serialize(new { training_mode = settings["TrainingMode"], check_only = checkOnly, python = settings["Python"], auto_split = splitCommand, commands = plan }), new UTF8Encoding(false));
                 await Task.Run(delegate
                 {
                     if (settings["TrainingMode"] == ExplicitMode) { RunExplicit(settings, plan, checkOnly, logPath); return; }
                     Run(settings["Python"], new[] { "-u", "-c", EnvironmentProbe }, "检查 Python / PyTorch / GPU");
                     Run(settings["Python"], new[] { "-u", "-c", "import sys; from wushu_bridge.source_revision import revision; print('Trainer source: '+revision(sys.argv[1]))", root }, "检查训练器版本记录");
                     Run(settings["Python"], new[] { "-u", "-c", "import json,sys; from wushu_bridge.trainer_engine import RunConfig; c=RunConfig(**json.load(open(sys.argv[1],encoding='utf-8'))); c.validate(); print(c)", settings["Config"] }, "检查训练参数");
+                    if (splitCommand != null)
+                        Run(settings["Python"], new[] { "-u", Path.Combine(root, "tools", "trainer.py") }.Concat(splitCommand).ToArray(), "自动生成/复用场景分组（约80%训练、10%验证、10%测试）");
+                    else if (AutoSplitRequested(settings) && resume) Append("续训使用原任务保存的分组清单，不重新划分数据。");
                     if ((settings["TrainingMode"] == "aligned_token_identity_v1" || settings["TrainingMode"] == "monotone_token_identity_v1") && Directory.Exists(settings["PreparedDirectory"]))
                         Run(settings["Python"], new[] { "-u", "-c", PreparedProbe, settings["PreparedDirectory"], settings["Dataset"], settings["Pairs"], settings["Encoder"], settings["SplitManifest"], settings["ComfyRoot"], settings["TrainingMode"] == "monotone_token_identity_v1" ? "token_id_monotone_transport_v1" : "equal_length_edit_blocks_v1", !String.IsNullOrWhiteSpace(settings["VideoFeedbackRoot"]) ? "all_unique_scene_families" : settings["SelectionPolicy"] }, "CPU 检查实验准备回执与原始输入（复用，不覆盖）");
                     if (checkOnly)
@@ -1084,8 +1150,9 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             using (var p = new Process())
             {
                 p.StartInfo = ProcessInfo(python, args, root);
+                string lastError = null;
                 p.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data != null) Append(e.Data); };
-                p.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data != null) Append(e.Data); };
+                p.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data != null) { lastError = e.Data; Append(e.Data); } };
                 lock (processLock)
                 {
                     if (cancelled) throw new OperationCanceledException();
@@ -1095,7 +1162,8 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 {
                     p.BeginOutputReadLine(); p.BeginErrorReadLine(); p.WaitForExit();
                     if (cancelled) throw new OperationCanceledException();
-                    if (p.ExitCode != 0) throw new Exception(title + "失败，退出码 " + p.ExitCode + "。后续阶段未执行，请查看日志。");
+                    if (p.ExitCode != 0) throw new Exception(title + "失败，退出码 " + p.ExitCode + "。后续阶段未执行，请查看日志。"
+                        + (args.Contains("auto-split") && !String.IsNullOrWhiteSpace(lastError) ? "\n" + lastError : ""));
                 }
                 finally { lock (processLock) { activeProcess = null; } }
             }
@@ -1425,9 +1493,75 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                     throw new Exception("Saved relative paths did not relocate");
             results.Add("Encoder discovery chooses only an unambiguous file; relative saved user data paths survive relocation with Chinese/spaces: passed; fake path fixtures, no model execution");
             SelfTestEpochs(output, results);
+            SelfTestAutoSplit(python, output, results);
             SelfTestExplicit(python, output, results);
             File.WriteAllText(Path.Combine(output, "self-test.json"), new JavaScriptSerializer().Serialize(results), new UTF8Encoding(false));
             return 0;
+        }
+
+        static void SelfTestAutoSplit(string python, string output, List<string> results)
+        {
+            string fixture = Path.Combine(output, "auto-split-中文 space-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(fixture);
+            string source = Path.Combine(fixture, "训练对.jsonl");
+            File.Copy(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "datasets", "preference_example.jsonl"), source);
+            using (var form = new Launcher(AppDomain.CurrentDomain.BaseDirectory, false))
+            {
+                form.paths["Pairs"].Text = source;
+                var settings = form.Snapshot();
+                form.ResolveSplitSettings(settings, false);
+                string expected = Path.Combine(form.root, "local", "splits", FileSha(source) + ".json");
+                if (!AutoSplitRequested(settings) || settings["SplitManifest"] != expected || !form.paths["SplitManifest"].ReadOnly
+                    || form.pathControls["SplitManifest"].OfType<Button>().Single().Enabled)
+                    throw new Exception("Automatic split defaults/source binding/readonly controls failed");
+                var args = new[] { "-B", "-X", "utf8", Path.Combine(form.root, "tools", "trainer.py"), "auto-split", source, "--output", expected };
+                using (var process = Process.Start(ProcessInfo(python, args, form.root)))
+                {
+                    string stdout = process.StandardOutput.ReadToEnd(), stderr = process.StandardError.ReadToEnd(); process.WaitForExit();
+                    if (process.ExitCode != 0 || !File.Exists(expected) || !stdout.Contains("split_")) throw new Exception("Real auto-split CLI failed: " + stderr);
+                }
+                string changedSource = Path.Combine(fixture, "修改后的训练对.jsonl");
+                File.WriteAllText(changedSource, File.ReadAllText(source) + "\n", new UTF8Encoding(false));
+                settings["Pairs"] = changedSource; form.ResolveSplitSettings(settings, false);
+                if (settings["SplitManifest"] == expected || File.Exists(settings["SplitManifest"])) throw new Exception("Changed dataset must use a new split file");
+                settings["Pairs"] = source;
+                string run = Path.Combine(fixture, "resume"); Directory.CreateDirectory(run);
+                File.Copy(expected, Path.Combine(run, "source_split_manifest.json"));
+                settings["RunDirectory"] = run;
+                form.ResolveSplitSettings(settings, true);
+                if (settings["SplitManifest"] != Path.Combine(run, "source_split_manifest.json")) throw new Exception("Resume must retain original splits");
+                string saved = File.ReadAllText(settings["SplitManifest"]);
+                form.ResolveSplitSettings(settings, true);
+                if (File.ReadAllText(settings["SplitManifest"]) != saved) throw new Exception("Resume changed original splits");
+                settings["RunDirectory"] = Path.Combine(fixture, "missing-run");
+                bool rejected = false;
+                try { form.ResolveSplitSettings(settings, true); } catch (Exception ex) { rejected = ex.Message.Contains("不会重新划分"); }
+                if (!rejected) throw new Exception("Resume without original split must not repartition");
+                results.Add("Automatic splits: default enabled, source-SHA path, actual CLI creation, read-only UI, resume retains original and refuses missing original; format examples/software checks only");
+                form.autoSplit.Checked = false;
+                form.paths["SplitManifest"].Text = Path.Combine(fixture, "manual.json");
+                settings = form.Snapshot(); form.ResolveSplitSettings(settings, false);
+                if (AutoSplitRequested(settings) || settings["SplitManifest"] != form.paths["SplitManifest"].Text || form.paths["SplitManifest"].ReadOnly)
+                    throw new Exception("Manual split opt-out failed");
+                form.autoSplit.Checked = true;
+                form.paths["VideoFeedbackRoot"].Text = fixture;
+                if (AutoSplitRequested(form.Snapshot()) || form.autoSplit.Enabled) throw new Exception("Video-feedback split must remain explicit");
+                form.paths["VideoFeedbackRoot"].Clear();
+                form.trainingMode.SelectedIndex = 2;
+                if (AutoSplitRequested(form.Snapshot()) || form.autoSplit.Enabled) throw new Exception("Experimental split must remain explicit");
+                using (var privateForm = new Launcher(fixture, false)) {
+                    privateForm.autoSplit.Checked = false;
+                    privateForm.SaveSettings(privateForm.Snapshot());
+                }
+                using (var restored = new Launcher(fixture))
+                    if (restored.autoSplit.Checked) throw new Exception("Manual split opt-out was not persisted");
+                string settingsPath = Path.Combine(fixture, "local", "launcher.settings.xml");
+                var legacy = XDocument.Load(settingsPath); legacy.Root.Element("AutoSplit").Remove();
+                legacy.Root.Element("SplitManifest").Value = Path.Combine(fixture, "user-manual-split.json"); legacy.Save(settingsPath);
+                using (var restored = new Launcher(fixture))
+                    if (restored.autoSplit.Checked) throw new Exception("Legacy custom split must remain manual");
+                results.Add("Automatic split opt-out persists; manual paths untouched; video-feedback and token experiments retain explicit splits; no encoding/training in this check");
+            }
         }
 
         static void SelfTestEpochs(string output, List<string> results)
