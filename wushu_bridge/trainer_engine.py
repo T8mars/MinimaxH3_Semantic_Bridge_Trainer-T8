@@ -24,6 +24,7 @@ from .judge import JudgeConfig, build_judge, calibrate_temperature, expected_cal
 from .train import _auc, _pad_batch, masked_mean
 from .trainer_data import partition, write_json
 from .token_alignment import transport_edges
+from .checkpoint_io import save_checkpoint, training_lock, replace_with_retry
 
 
 @dataclass
@@ -305,12 +306,6 @@ def judge_metrics(logits, labels, temperature=1., bias=0.):
             "pairwise_good_above_bad": float((probs[1::2] > probs[::2]).float().mean()),
             "brier_against_soft_labels": float((probs-labels).square().mean()),
             "samples": len(labels)}
-
-
-def save_checkpoint(path, state):
-    temp = path.with_suffix(".tmp")
-    torch.save(state, temp)
-    os.replace(temp, path)
 
 
 def run_signature(cfg, identity):
@@ -607,7 +602,7 @@ def fit_stage(kind, ds, splits, cfg, folder, signature, resume=False, stop_after
             "alpha_min": cfg.alpha_min, "alpha_max": cfg.alpha_max, "magnitude_mode": cfg.magnitude_mode}
         model.cfg.extra["inference_guidance"] = make_inference_guidance(model)
         save_bridge(str(folder / "bridge.partial.safetensors"), model)
-        os.replace(folder / "bridge.partial.safetensors", folder / "bridge.safetensors")
+        replace_with_retry(folder / "bridge.partial.safetensors", folder / "bridge.safetensors")
         report["inference_guidance"] = write_inference_guidance(folder / "bridge.safetensors", model)
     else:
         logits, labels = judge_predictions(model, ds, splits["calibration"], cfg)
@@ -619,7 +614,7 @@ def fit_stage(kind, ds, splits, cfg, folder, signature, resume=False, stop_after
         report["temperature"], report["bias"] = temp, bias
         report["label_warning"] = "Scores measure agreement with rule soft labels, not probability of good generated video"
         save_judge(str(folder / "judge.partial.safetensors"), model, {"signature": signature, "encoder": ds.meta.encoder})
-        os.replace(folder / "judge.partial.safetensors", folder / "judge.safetensors")
+        replace_with_retry(folder / "judge.partial.safetensors", folder / "judge.safetensors")
     write_json(folder / f"{kind}_report.json", report)
     return report
 
@@ -677,6 +672,13 @@ def train_run(ds, cfg, folder, identity, resume=False, stage="both", stop_after_
                 raise ValueError("An initialized bridge run must resume as bridge-only")
             identity = {**identity, "bridge_initialization": initialization}
     folder.mkdir(parents=True, exist_ok=init_bridge is None)
+    with training_lock(folder):
+        return _run_in_folder(ds, cfg, folder, identity, resume, stage, stop_after_epochs,
+                              split_manifest, splits, initial_state, initialization)
+
+
+def _run_in_folder(ds, cfg, folder, identity, resume, stage, stop_after_epochs,
+                   split_manifest, splits, initial_state, initialization):
     signature = run_signature(cfg, identity)
     manifest_path = folder / "run.json"
     previous = {}

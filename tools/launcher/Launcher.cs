@@ -62,6 +62,11 @@ namespace WushuBridgeLauncher
         readonly RichTextBox log = new RichTextBox();
         readonly Label status = new Label();
         readonly ComboBox trainingMode = new ComboBox();
+        readonly NumericUpDown bridgeEpochs = new NumericUpDown { Minimum = 1, Maximum = 100000, Value = 150, Width = 80 };
+        readonly NumericUpDown judgeEpochs = new NumericUpDown { Minimum = 1, Maximum = 100000, Value = 200, Width = 80 };
+        readonly Label epochHint = new Label();
+        FlowLayoutPanel epochControls;
+        Label epochLabel;
         readonly CheckBox allRows = new CheckBox();
         readonly Label modeSummary = new Label();
         readonly Button stop = new Button();
@@ -131,7 +136,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             modeSummary.AutoSize = true; modeSummary.ForeColor = Color.DimGray;
             layout.Controls.Add(modeSummary, 0, 1);
 
-            var fields = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 13 };
+            var fields = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 14 };
             fieldPanel = fields;
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -162,6 +167,22 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             trainingMode.SelectedIndex = 1;
             trainingMode.SelectedIndexChanged += delegate { UpdateTrainingMode(!restoringSettings); };
             fields.Controls.Add(new Label { Text = "新手优先选无评分偏好对；实验模式需专门准备", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.DimGray }, 3, 12);
+            fields.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            epochLabel = new Label { Text = "训练轮次（最大）", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            fields.Controls.Add(epochLabel, 0, 13);
+            epochControls = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 6, 0, 0) };
+            epochControls.Controls.Add(new Label { Text = "语义桥", AutoSize = true, Margin = new Padding(0, 4, 5, 0) });
+            epochControls.Controls.Add(bridgeEpochs);
+            epochControls.Controls.Add(new Label { Text = "JEV", AutoSize = true, Margin = new Padding(14, 4, 5, 0) });
+            epochControls.Controls.Add(judgeEpochs);
+            fields.Controls.Add(epochControls, 1, 13); fields.SetColumnSpan(epochControls, 2);
+            epochHint.Text = "验证集无改善可提前停止；续训沿用原轮次";
+            epochHint.Dock = DockStyle.Fill; epochHint.ForeColor = Color.DimGray; epochHint.TextAlign = ContentAlignment.MiddleLeft;
+            fields.Controls.Add(epochHint, 3, 13);
+            editable.Add(bridgeEpochs); editable.Add(judgeEpochs);
+            help.SetToolTip(bridgeEpochs, "最多训练多少轮。新任务可调整；早停仍由 patience 控制。不会修改原 JSON。");
+            help.SetToolTip(judgeEpochs, "仅数值评分模式训练 JEV；偏好模式不使用。");
+            paths["Config"].TextChanged += delegate { RefreshEpochDefaults(); };
 
             var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
             layout.Controls.Add(actions, 0, 3);
@@ -445,6 +466,9 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                     if (policy != null) allRows.Checked = policy.Value == "all_rows";
                     var updates = doc.Root.Element("AutoCheckUpdates");
                     if (updates != null) autoUpdate.Checked = updates.Value != "false";
+                    decimal saved;
+                    if (Decimal.TryParse((string)doc.Root.Element("BridgeEpochs"), out saved) && saved >= 1 && saved <= bridgeEpochs.Maximum) bridgeEpochs.Value = saved;
+                    if (Decimal.TryParse((string)doc.Root.Element("JudgeEpochs"), out saved) && saved >= 1 && saved <= judgeEpochs.Maximum) judgeEpochs.Value = saved;
                 }
                 catch (Exception ex) { Append("无法读取上次设置：" + ex.Message); }
                 finally { restoringSettings = false; }
@@ -458,6 +482,8 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             snapshot["TrainingMode"] = trainingMode.SelectedIndex == 4 ? ExplicitMode : trainingMode.SelectedIndex == 3 ? "monotone_token_identity_v1" : trainingMode.SelectedIndex == 2 ? "aligned_token_identity_v1" : trainingMode.SelectedIndex == 1 ? "preference_only" : "numeric_scores";
             snapshot["SelectionPolicy"] = allRows.Checked ? "all_rows" : "one_per_group";
             snapshot["AutoCheckUpdates"] = autoUpdate.Checked ? "true" : "false";
+            snapshot["BridgeEpochs"] = bridgeEpochs.Value.ToString(CultureInfo.InvariantCulture);
+            snapshot["JudgeEpochs"] = judgeEpochs.Value.ToString(CultureInfo.InvariantCulture);
             return snapshot;
         }
 
@@ -465,7 +491,11 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
         {
             bool explicitFit = trainingMode.SelectedIndex == 4;
             allRows.Enabled = (trainingMode.SelectedIndex == 2 || trainingMode.SelectedIndex == 3) && !busy;
-            mainLayout.RowStyles[2].Height = explicitFit ? 210 : 462;
+            mainLayout.RowStyles[2].Height = explicitFit ? 210 : 500;
+            epochControls.Visible = epochHint.Visible = epochLabel.Visible = !explicitFit;
+            fieldPanel.RowStyles[13].Height = explicitFit ? 0 : 38;
+            bridgeEpochs.Enabled = !busy && !explicitFit;
+            judgeEpochs.Enabled = !busy && trainingMode.SelectedIndex == 0;
             foreach (var entry in pathControls)
             {
                 bool explicitField = entry.Key == "TargetManifest" || entry.Key == "ExplicitFitConfig";
@@ -517,6 +547,33 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 if (paths["SplitManifest"].Text == PreferenceSplit()) paths["SplitManifest"].Text = "";
             }
             RefreshPathHints();
+        }
+
+        void RefreshEpochDefaults()
+        {
+            try {
+                if (!File.Exists(paths["Config"].Text)) return;
+                var values = ObjectMap(Json().DeserializeObject(File.ReadAllText(paths["Config"].Text)));
+                if (values.ContainsKey("bridge_epochs")) bridgeEpochs.Value = Math.Max(bridgeEpochs.Minimum, Math.Min(bridgeEpochs.Maximum, Convert.ToDecimal(values["bridge_epochs"])));
+                if (values.ContainsKey("judge_epochs")) judgeEpochs.Value = Math.Max(judgeEpochs.Minimum, Math.Min(judgeEpochs.Maximum, Convert.ToDecimal(values["judge_epochs"])));
+            } catch (Exception) { /* The normal preflight reports invalid JSON. */ }
+        }
+
+        internal static int[] EpochOptions(Dictionary<string, string> settings, bool resume)
+        {
+            string run = Path.Combine(settings["RunDirectory"], "run.json");
+            Dictionary<string, object> config;
+            if (resume && File.Exists(run)) config = ObjectMap(ObjectMap(Json().DeserializeObject(File.ReadAllText(run)))["config"]);
+            else config = ObjectMap(Json().DeserializeObject(File.ReadAllText(settings["Config"])));
+            var values = new int[2];
+            for (int i = 0; i < 2; i++) {
+                string key = i == 0 ? "BridgeEpochs" : "JudgeEpochs", jsonKey = i == 0 ? "bridge_epochs" : "judge_epochs";
+                string raw = (!resume || !File.Exists(run)) && settings.ContainsKey(key) ? settings[key]
+                    : config.ContainsKey(jsonKey) ? Convert.ToString(config[jsonKey], CultureInfo.InvariantCulture) : i == 0 ? "150" : "200";
+                if (!Int32.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out values[i]) || values[i] < 1 || values[i] > 100000)
+                    throw new Exception("训练轮次必须是 1–100000 的整数。");
+            }
+            return values;
         }
 
         void SaveSettings(Dictionary<string, string> settings)
@@ -840,6 +897,8 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 result.Add(new[] { "check-dataset", dataset, "--pairs", Path.Combine(prepared, "pairs.jsonl"), "--encoder", s["Encoder"] });
             }
             var train = new List<string> { "train", dataset, "--output", s["RunDirectory"], "--config", s["Config"] };
+            var epochs = EpochOptions(s, resume);
+            train.AddRange(new[] { "--epochs", epochs[0].ToString(CultureInfo.InvariantCulture), "--judge-epochs", epochs[1].ToString(CultureInfo.InvariantCulture) });
             if (preference) train.AddRange(new[] { "--stage", "bridge", "--split-manifest", split });
             if (videoFeedback) train.AddRange(new[] { "--video-feedback-root", evidenceRoot });
             if (resume) train.Add("--resume");
@@ -923,7 +982,15 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             var settings = Snapshot();
             try
             {
-                Validate(settings, resume, checkOnly); SaveSettings(settings);
+                Validate(settings, resume, checkOnly);
+                if (settings["TrainingMode"] != ExplicitMode) {
+                    var selectedEpochs = EpochOptions(settings, resume);
+                    bridgeEpochs.Value = selectedEpochs[0]; judgeEpochs.Value = selectedEpochs[1];
+                    settings["BridgeEpochs"] = selectedEpochs[0].ToString(CultureInfo.InvariantCulture);
+                    settings["JudgeEpochs"] = selectedEpochs[1].ToString(CultureInfo.InvariantCulture);
+                    if (resume) Append("续训沿用原任务轮次：语义桥 " + selectedEpochs[0] + "，JEV " + selectedEpochs[1]);
+                }
+                SaveSettings(settings);
                 string logDir = Path.Combine(root, "local", "launcher_logs"); Directory.CreateDirectory(logDir);
                 string logPath = Path.Combine(logDir, DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".log");
                 logFile = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true };
@@ -1133,6 +1200,10 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 form.Opacity = 0;
                 form.Show();
                 Application.DoEvents();
+                using (var preview = new Bitmap(form.ClientSize.Width, form.ClientSize.Height)) {
+                    form.DrawToBitmap(preview, new Rectangle(Point.Empty, form.ClientSize));
+                    preview.Save(Path.Combine(output, "launcher-preview.png"));
+                }
                 var settings = form.Snapshot();
                 if (settings["TrainingMode"] != "preference_only" || settings["Pairs"] != form.PreferencePairs() || settings["SplitManifest"] != form.PreferenceSplit()
                     || !File.Exists(settings["Pairs"]) || !File.Exists(settings["SplitManifest"]) || !File.Exists(settings["Config"]))
@@ -1353,9 +1424,46 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                     || form.paths["SplitManifest"].Text != Path.Combine(relocated, "local", "my_dataset", "split_manifest.json"))
                     throw new Exception("Saved relative paths did not relocate");
             results.Add("Encoder discovery chooses only an unambiguous file; relative saved user data paths survive relocation with Chinese/spaces: passed; fake path fixtures, no model execution");
+            SelfTestEpochs(output, results);
             SelfTestExplicit(python, output, results);
             File.WriteAllText(Path.Combine(output, "self-test.json"), new JavaScriptSerializer().Serialize(results), new UTF8Encoding(false));
             return 0;
+        }
+
+        static void SelfTestEpochs(string output, List<string> results)
+        {
+            string fixture = Path.Combine(output, "epoch-options-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(fixture, "configs"));
+            string config = Path.Combine(fixture, "configs", "preference_v1.json");
+            string text = "{\"bridge_epochs\":150,\"judge_epochs\":200}";
+            File.WriteAllText(config, text);
+            using (var form = new Launcher(fixture, false)) {
+                if (form.bridgeEpochs.Value != 150 || form.judgeEpochs.Enabled) throw new Exception("Epoch defaults/preference-only JEV control failed");
+                form.bridgeEpochs.Value = 75; form.judgeEpochs.Value = 90;
+                var s = form.Snapshot(); var epochs = EpochOptions(s, false);
+                if (epochs[0] != 75 || epochs[1] != 90) throw new Exception("Epoch override failed");
+                var command = Plan(s, false).Single(c => c[0] == "train");
+                if (command[Array.IndexOf(command, "--epochs") + 1] != "75" || command[Array.IndexOf(command, "--judge-epochs") + 1] != "90")
+                    throw new Exception("Epoch controls not routed into CLI arguments");
+                string run = s["RunDirectory"]; Directory.CreateDirectory(run);
+                File.WriteAllText(Path.Combine(run, "run.json"), "{\"config\":{\"bridge_epochs\":150,\"judge_epochs\":200}}");
+                epochs = EpochOptions(s, true);
+                if (epochs[0] != 150 || epochs[1] != 200) throw new Exception("Resume must use original epochs");
+                command = Plan(s, true).Single(c => c[0] == "train");
+                if (!command.Contains("--resume") || command[Array.IndexOf(command, "--epochs") + 1] != "150") throw new Exception("Resume epoch CLI routing failed");
+                if (File.ReadAllText(config) != text) throw new Exception("Epoch controls modified source config");
+                s["BridgeEpochs"] = "0"; bool rejected = false;
+                try { EpochOptions(s, false); } catch (Exception) { rejected = true; }
+                if (!rejected) throw new Exception("Invalid epochs accepted");
+                form.SaveSettings(form.Snapshot());
+                form.trainingMode.SelectedIndex = 0;
+                if (!form.judgeEpochs.Enabled) throw new Exception("Numeric mode JEV epochs disabled");
+                form.trainingMode.SelectedIndex = 4;
+                if (form.epochControls.Visible || form.bridgeEpochs.Enabled) throw new Exception("Explicit fixed-step mode exposes epochs");
+            }
+            using (var restored = new Launcher(fixture))
+                if (restored.bridgeEpochs.Value != 75 || restored.judgeEpochs.Value != 90) throw new Exception("Epoch settings persistence failed");
+            results.Add("Epoch UI: config defaults, editable bridge/JEV limits, preference disables JEV, persistence, resume original limits, invalid values rejected, source JSON preserved, explicit fixed-step mode hidden: passed; software only");
         }
 
         internal static int SelfTestExplicitPlan(string settingsPath, string output)

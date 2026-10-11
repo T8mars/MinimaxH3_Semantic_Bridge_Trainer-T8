@@ -74,6 +74,8 @@ def main(argv=None):
     train.add_argument("--stage", choices=("bridge", "judge", "both"), default="both")
     train.add_argument("--split-manifest", help="JSON schema=1, split_unit=group_id, splits mapping names to group IDs")
     train.add_argument("--device", choices=("auto", "cuda", "cpu"))
+    train.add_argument("--epochs", type=int, help="Override bridge_epochs for this run; does not modify the source JSON")
+    train.add_argument("--judge-epochs", type=int, help="Override judge_epochs for this run")
     train.add_argument("--resume", action="store_true")
     train.add_argument("--init-bridge", help="Initialize a new bridge-only run from exact compatible safetensors weights")
     train.add_argument("--init-bridge-sha256", help="Required SHA256 of --init-bridge; not an optimizer checkpoint")
@@ -210,6 +212,10 @@ def main(argv=None):
         values = json.loads(Path(args.config).read_text(encoding="utf-8"))
         if args.device:
             values["device"] = args.device
+        if args.epochs is not None:
+            values["bridge_epochs"] = args.epochs
+        if args.judge_epochs is not None:
+            values["judge_epochs"] = args.judge_epochs
         cfg = RunConfig(**values)
         cfg.validate()
         path = Path(args.dataset).resolve()

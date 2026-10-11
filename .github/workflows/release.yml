@@ -45,6 +45,21 @@ jobs:
           $zip = (Get-ChildItem -LiteralPath dist -Filter '*-Windows-NoPython.zip').FullName
           python -B tools/release_smoke_test.py --archive $zip --work-dir dist/smoke
           if ($LASTEXITCODE -ne 0) { throw 'Packaged CLI pipeline failed; release not published' }
+      - name: Verify Windows checkpoint sharing locks and 150 successive writes
+        run: python -B -m unittest discover -s tests -p test_checkpoint_io.py -v
+      - name: Verify the actual packaged launcher and epoch controls
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD 'dist/smoke/extracted_no_git'
+          New-Item -ItemType Directory -Force -Path (Join-Path $root 'python'),(Join-Path $root 'ComfyUI/comfy') | Out-Null
+          $python = (Get-Command python).Source
+          Copy-Item -LiteralPath $python -Destination (Join-Path $root 'python/python.exe')
+          $output = Join-Path $PWD 'dist/gui-software-checks'
+          $arguments = @('--self-test', ('"{0}"' -f $python), ('"{0}"' -f $output))
+          $process = Start-Process -FilePath (Join-Path $root 'WushuBridge-Trainer.exe') -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { Get-Content -LiteralPath (Join-Path $output 'self-test-error.txt'); throw 'Packaged launcher failed; release not published' }
+          $checks = Get-Content -LiteralPath (Join-Path $output 'self-test.json') -Raw | ConvertFrom-Json
+          if ($checks.Count -ne 18) { throw 'Incomplete launcher regressions; release not published' }
       - name: Publish Release
         shell: pwsh
         env:
