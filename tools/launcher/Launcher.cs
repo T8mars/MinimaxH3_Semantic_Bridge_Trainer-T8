@@ -51,6 +51,9 @@ namespace WushuBridgeLauncher
         readonly List<Control> editable = new List<Control>();
         readonly List<Control> alignedFields = new List<Control>();
         readonly Dictionary<string, Control[]> pathControls = new Dictionary<string, Control[]>();
+        readonly Dictionary<string, Label> pathHints = new Dictionary<string, Label>();
+        readonly ToolTip help = new ToolTip { AutoPopDelay = 20000 };
+        bool restoringSettings;
         TableLayoutPanel fieldPanel, mainLayout;
         Button resumeButton, checkButton;
         readonly Label footer = new Label();
@@ -66,6 +69,12 @@ namespace WushuBridgeLauncher
         Process activeProcess;
         volatile bool cancelled;
         bool busy;
+        bool updating;
+        bool installingUpdate;
+        bool updateAvailable;
+        readonly Button updateButton = new Button();
+        readonly CheckBox autoUpdate = new CheckBox();
+        readonly Label updateStatus = new Label();
         StreamWriter logFile;
         string activeRun;
         const string EnvironmentProbe = "import sys,torch,numpy,safetensors; v=tuple(map(int,torch.__version__.split('+')[0].split('.')[:2])); assert v >= (2,3), 'PyTorch >= 2.3 required'; print('Python: '+sys.version.split()[0]); print('PyTorch: '+torch.__version__); print('CUDA: '+str(torch.cuda.is_available())); print('GPU: '+(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU only'))";
@@ -98,15 +107,15 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
         internal Launcher(string directory, bool loadSavedSettings = true)
         {
             root = Path.GetFullPath(directory);
-            Text = "WushuBridge 训练器";
+            Text = "WushuBridge 训练器 · By T8star";
             Font = new Font("Microsoft YaHei UI", 9F);
             BackColor = Color.FromArgb(246, 248, 250);
-            ClientSize = new Size(1080, 994);
-            MinimumSize = new Size(900, 974);
+            ClientSize = new Size(1080, 1030);
+            MinimumSize = new Size(900, 1010);
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.Dpi;
 
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 7 };
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24), ColumnCount = 1, RowCount = 9 };
             mainLayout = layout;
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
@@ -115,16 +124,19 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             Controls.Add(layout);
-            layout.Controls.Add(new Label { Text = "WushuBridge 训练器", Font = new Font(Font.FontFamily, 22, FontStyle.Bold), AutoSize = true, ForeColor = Color.FromArgb(23, 54, 66) }, 0, 0);
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            layout.Controls.Add(new Label { Text = "WushuBridge 训练器 · By T8star", Font = new Font(Font.FontFamily, 22, FontStyle.Bold), AutoSize = true, ForeColor = Color.FromArgb(23, 54, 66) }, 0, 0);
             modeSummary.AutoSize = true; modeSummary.ForeColor = Color.DimGray;
             layout.Controls.Add(modeSummary, 0, 1);
 
-            var fields = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 13 };
+            var fields = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 13 };
             fieldPanel = fields;
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
+            fields.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
             layout.Controls.Add(fields, 0, 2);
             AddPath(fields, 0, "Python", "Python 环境", false, "Python|python.exe|所有文件|*.*");
             AddPath(fields, 1, "ComfyRoot", "ComfyUI 目录", true, null);
@@ -148,7 +160,8 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             fields.Controls.Add(allRows, 2, 12); editable.Add(allRows);
             new ToolTip().SetToolTip(allRows, "实验模式：保留同组所有已审核训练对；仍按 group_id 划分，不视作独立场景。默认每组一条。");
             trainingMode.SelectedIndex = 1;
-            trainingMode.SelectedIndexChanged += delegate { UpdateTrainingMode(true); };
+            trainingMode.SelectedIndexChanged += delegate { UpdateTrainingMode(!restoringSettings); };
+            fields.Controls.Add(new Label { Text = "新手优先选无评分偏好对；实验模式需专门准备", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.DimGray }, 3, 12);
 
             var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
             layout.Controls.Add(actions, 0, 3);
@@ -158,9 +171,14 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             stop.Text = "停止任务"; stop.Size = new Size(105, 34); stop.Enabled = false;
             stop.Click += delegate { RequestStop(); };
             actions.Controls.Add(stop);
-            AddAction(actions, "新输出目录", delegate { paths["RunDirectory"].Text = NewRunPath(); if (trainingMode.SelectedIndex == 2 || trainingMode.SelectedIndex == 3) paths["PreparedDirectory"].Text = NewPreparedPath(trainingMode.SelectedIndex == 3); }, true, false);
+            AddAction(actions, "新输出目录", delegate { paths["RunDirectory"].Text = NewRunPath(); if (trainingMode.SelectedIndex != 4) paths["Dataset"].Text = NewDatasetPath(trainingMode.SelectedIndex != 0); if (trainingMode.SelectedIndex == 2 || trainingMode.SelectedIndex == 3) paths["PreparedDirectory"].Text = NewPreparedPath(trainingMode.SelectedIndex == 3); }, true, false);
             AddAction(actions, "查看输出", delegate { OpenFolder(activeRun ?? paths["RunDirectory"].Text); }, false, false);
-            AddAction(actions, "使用说明", delegate { OpenFile(Path.Combine(root, "docs", File.Exists(Path.Combine(root, "python", "python.exe")) ? "便携整合包.md" : "可复用训练器.md")); }, false, false);
+            AddAction(actions, "使用说明", delegate { OpenFile(File.Exists(Path.Combine(root, "如何训练.md")) ? Path.Combine(root, "如何训练.md") : Path.Combine(root, "docs", File.Exists(Path.Combine(root, "python", "python.exe")) ? "便携整合包.md" : "可复用训练器.md")); }, false, false);
+            AddAction(actions, "模型用法", delegate {
+                string guide = Path.Combine(paths["RunDirectory"].Text, "模型使用说明.md");
+                if (File.Exists(guide)) OpenFile(guide);
+                else MessageBox.Show(this, "训练完成后，此处会打开该模型专属的 alpha 与配套参数说明。先选对应的训练输出目录。", "模型使用说明");
+            }, false, false);
 
             status.Text = "就绪 · 请选择空闲时段开始训练";
             status.Dock = DockStyle.Fill; status.TextAlign = ContentAlignment.MiddleLeft;
@@ -172,6 +190,33 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             layout.Controls.Add(log, 0, 5);
             footer.Dock = DockStyle.Fill; footer.TextAlign = ContentAlignment.MiddleLeft; footer.ForeColor = Color.DimGray;
             layout.Controls.Add(footer, 0, 6);
+            var social = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            layout.Controls.Add(social, 0, 7);
+            foreach (var link in new[] {
+                new[] { "B站", "https://space.bilibili.com/385085361" },
+                new[] { "YouTube", "https://www.youtube.com/@T8star-Aix/" },
+                new[] { "API", "https://api.seedance.nz/sign-up?aff=5f4w" },
+                new[] { "免费画廊", "https://www.openzhenzhen.com" },
+                new[] { "在线AI应用", "https://www.runninghub.ai/zh-cn/user-center/1907375370302308353/userPost?inviteCode=rh-v1121" },
+                new[] { "ComfyUI整合包", "https://pan.quark.cn/s/264edb7e36bd" },
+                new[] { "Hugging Face", "https://huggingface.co/t8star" } })
+            {
+                string url = link[1];
+                var item = new LinkLabel { Text = link[0], AutoSize = true, Margin = new Padding(0, 7, 18, 0) };
+                help.SetToolTip(item, url);
+                item.LinkClicked += delegate { try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch (Exception ex) { MessageBox.Show(this, ex.Message); } };
+                social.Controls.Add(item);
+            }
+            var updateBar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            layout.Controls.Add(updateBar, 0, 8);
+            updateButton.Text = "检查更新"; updateButton.Size = new Size(105, 30);
+            updateButton.Click += async delegate { await UpdateApplication(updateAvailable); };
+            updateBar.Controls.Add(updateButton);
+            autoUpdate.Text = "启动检查更新"; autoUpdate.Checked = true; autoUpdate.AutoSize = true; autoUpdate.Margin = new Padding(10, 7, 12, 0);
+            updateBar.Controls.Add(autoUpdate);
+            updateStatus.Text = "当前 " + ApplicationVersion() + " · 更新保留 Python、模型、数据和设置";
+            updateStatus.AutoSize = true; updateStatus.Margin = new Padding(0, 7, 0, 0);
+            updateBar.Controls.Add(updateStatus);
             LoadSettings(loadSavedSettings);
             UpdateTrainingMode(false);
             Append("选择“检查环境”确认依赖；“开始训练”会依次校验数据、编码、训练和评估。");
@@ -181,7 +226,85 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             Append("只有使用完整声画双 seed 复核的 video_feedback_v1 训练对时才填写私有证据目录；程序会在检查、编码、准备和训练阶段重新核验。普通作者偏好对留空。");
             Append("实验 epoch 选择以训练 run 的 correction + identity 验证损失为准；辅助诊断不选择 alpha，也不表示实验通过。");
             Append("优先使用包内 Python/ComfyUI；不会自动安装依赖或卸载其他任务的模型。");
+            Append("首次已填写包内偏好格式示例和配套分组；示例未验证视频效果。正式自训请更换自己的 JSONL 与分组，并选择真实 H3 文本编码器。其余默认路径通常无需修改。");
             FormClosing += OnClosing;
+            if (loadSavedSettings) Shown += async delegate {
+                string error = Path.Combine(root, "local", "updater", "last_error.json");
+                if (File.Exists(error)) { Append("上次更新提示：" + File.ReadAllText(error, Encoding.UTF8)); }
+                if (autoUpdate.Checked) await UpdateApplication(false);
+            };
+        }
+
+        string ApplicationVersion()
+        {
+            try { return Convert.ToString(ReadMap(Path.Combine(root, "app_version.json"))["version"]); }
+            catch { return "0.0.0"; }
+        }
+
+        Dictionary<string, object> UpdateCommand(string python, string[] args)
+        {
+            using (var p = new Process())
+            {
+                p.StartInfo = ProcessInfo(python, args, root);
+                p.Start();
+                var stdout = p.StandardOutput.ReadToEndAsync();
+                var stderr = p.StandardError.ReadToEndAsync();
+                if (!p.WaitForExit(180000)) { p.Kill(); throw new Exception("更新请求超时，可稍后重试。"); }
+                Task.WaitAll(stdout, stderr);
+                var result = ObjectMap(Json().DeserializeObject(stdout.Result));
+                if (p.ExitCode != 0) throw new Exception(result.ContainsKey("error") ? Convert.ToString(result["error"]) : stderr.Result);
+                return result;
+            }
+        }
+
+        async Task UpdateApplication(bool install)
+        {
+            if (busy || updating) return;
+            string python = paths["Python"].Text.Trim();
+            string bundled = Path.Combine(root, "python", "python.exe");
+            if (File.Exists(bundled)) python = bundled;
+            if (!File.Exists(python)) { updateStatus.Text = "先选择 Python 3.10+，再检查更新"; return; }
+            updating = true;
+            installingUpdate = install;
+            if (install) foreach (var control in editable) control.Enabled = false;
+            updateButton.Enabled = false;
+            updateStatus.Text = install ? "下载并校验更新包…" : "正在检查 GitHub Release…";
+            bool closingForUpdate = false;
+            try
+            {
+                string command = install ? "stage" : "check";
+                var result = await Task.Run(() => UpdateCommand(python, new[] { "-B", "-X", "utf8", Path.Combine(root, "tools", "updater.py"), command, "--root", root }));
+                if (install)
+                {
+                    SaveSettings(Snapshot());
+                    var info = ProcessInfo(python, new[] { "-B", "-X", "utf8", Convert.ToString(result["helper"]), "apply", "--root", root,
+                        "--staging", Convert.ToString(result["staging"]), "--wait-pid", Process.GetCurrentProcess().Id.ToString(), "--restart" }, root);
+                    info.RedirectStandardOutput = false; info.RedirectStandardError = false;
+                    info.StandardOutputEncoding = null; info.StandardErrorEncoding = null;
+                    Process.Start(info);
+                    closingForUpdate = true;
+                    updating = false;
+                    Close();
+                }
+                else
+                {
+                    updateAvailable = Convert.ToBoolean(result["available"]);
+                    updateButton.Text = updateAvailable ? "安装更新" : "检查更新";
+                    updateStatus.Text = Convert.ToString(result["message"]) + (result.ContainsKey("latest") ? " · " + Convert.ToString(result["latest"]) : "");
+                    if (updateAvailable) Append("发现新版 " + result["latest"] + "，空闲时点“安装更新”。安装会关闭并重启本启动器。");
+                }
+            }
+            catch (Exception ex) { updateStatus.Text = "更新未完成，可稍后重试"; Append("更新：" + ex.Message); }
+            finally
+            {
+                if (!closingForUpdate && !IsDisposed) {
+                    updating = false; installingUpdate = false; updateButton.Enabled = !busy;
+                    if (install) {
+                        foreach (var control in editable) control.Enabled = true;
+                        UpdateTrainingMode(false);
+                    }
+                }
+            }
         }
 
         void AddPath(TableLayoutPanel panel, int row, string key, string title, bool folder, string filter, bool output = false)
@@ -193,8 +316,11 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             paths.Add(key, box); editable.Add(box); panel.Controls.Add(box, 1, row);
             var browse = new Button { Text = "浏览…", Dock = DockStyle.Fill, Margin = new Padding(0, 5, 0, 6) };
             editable.Add(browse); panel.Controls.Add(browse, 2, row);
-            pathControls[key] = new Control[] { label, box, browse };
-            if (key == "PreparedDirectory") alignedFields.AddRange(new Control[] { label, box, browse });
+            var hint = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.DimGray, Font = new Font(Font.FontFamily, 8.5F), Margin = new Padding(8, 0, 0, 0) };
+            panel.Controls.Add(hint, 3, row); pathHints[key] = hint;
+            pathControls[key] = new Control[] { label, box, browse, hint };
+            box.TextChanged += delegate { RefreshPathHints(); };
+            if (key == "PreparedDirectory") alignedFields.AddRange(new Control[] { label, box, browse, hint });
             browse.Click += delegate
             {
                 if (folder)
@@ -236,10 +362,59 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             return Path.Combine(root, "local", (transport ? "transport_" : "aligned_") + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff"));
         }
 
+        string NewDatasetPath(bool preference = true)
+        {
+            return Path.Combine(root, "local", (preference ? "preference_" : "wushu_") + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".npz");
+        }
+
+        string PreferencePairs()
+        {
+            string bundled = Path.Combine(root, "datasets", "preference_example.jsonl");
+            string fallback = Path.Combine(root, "examples", "preference_starter", "pairs.format-example.jsonl");
+            return File.Exists(bundled) ? bundled : File.Exists(fallback) ? fallback : "";
+        }
+
+        string PreferenceSplit()
+        {
+            string bundled = Path.Combine(root, "datasets", "preference_example_split.json");
+            string fallback = Path.Combine(root, "examples", "preference_starter", "split.format-example.json");
+            return File.Exists(bundled) ? bundled : File.Exists(fallback) ? fallback : "";
+        }
+
+        string AuthorPairs()
+        {
+            string bundled = Path.Combine(root, "datasets", "wushu_pairs_v1_pairs.jsonl");
+            return File.Exists(bundled) ? bundled : Path.Combine(root, "models", "wushu_bridge", "datasets", "wushu_pairs_v1_pairs.jsonl");
+        }
+
+        void RefreshPathHints()
+        {
+            foreach (var item in pathHints)
+            {
+                string key = item.Key, value = paths[key].Text;
+                string note = key == "Python" ? "自动：包内 Python，通常不用修改"
+                    : key == "ComfyRoot" ? "自动：包内 H3 编码源码，通常不用修改"
+                    : key == "Encoder" ? (File.Exists(value) ? "已找到编码器；请核对与实际推理版本一致" : "必选：另备 H3 文本编码器，与推理版本一致")
+                    : key == "Pairs" ? (value == PreferencePairs() && value != "" ? "8对格式示例；正式训练请换自己的 JSONL" : value == AuthorPairs() ? "内置作者676对；数值模式同时训练 JEV" : "自备：审核过的 bad/good 训练对 JSONL")
+                    : key == "SplitManifest" ? (trainingMode.SelectedIndex == 0 ? "数值模式无需填写，可留空" : value == PreferenceSplit() && value != "" ? "示例配套分组；自训时与 JSONL 一起更换" : "必选：与上方 JSONL 匹配的分组划分")
+                    : key == "Dataset" ? "自动：首次由程序生成；换数据点新输出目录"
+                    : key == "RunDirectory" ? "自动：新运行目录；续训时选原目录"
+                    : key == "Config" ? "自动：随训练方式切换；初次保留默认"
+                    : key == "PreparedDirectory" ? "仅 token 实验使用；普通训练保持默认"
+                    : key == "VideoFeedbackRoot" ? "普通自编文本留空；仅真实反馈证据填写"
+                    : key == "TargetManifest" ? "必选：实验专用 train 目标清单，见高级文档"
+                    : "可选：实验拟合参数；初次可留空";
+                item.Value.Text = note;
+                item.Value.ForeColor = note.StartsWith("必选") || note.Contains("格式示例") || note.Contains("示例配套") ? Color.FromArgb(160, 88, 0) : Color.DimGray;
+                help.SetToolTip(item.Value, note); help.SetToolTip(paths[key], note + "\n" + value);
+            }
+        }
+
         void LoadSettings(bool loadSavedSettings)
         {
-            paths["Pairs"].Text = "";
-            paths["Dataset"].Text = Path.Combine(root, "local", "preference_pairs.npz");
+            paths["Pairs"].Text = PreferencePairs();
+            paths["SplitManifest"].Text = PreferenceSplit();
+            paths["Dataset"].Text = NewDatasetPath();
             paths["RunDirectory"].Text = NewRunPath();
             paths["Config"].Text = Path.Combine(root, "configs", "preference_v1.json");
             paths["PreparedDirectory"].Text = NewPreparedPath();
@@ -247,14 +422,15 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 paths["Python"].Text = Path.Combine(root, "python", "python.exe");
             if (Directory.Exists(Path.Combine(root, "ComfyUI", "comfy")))
                 paths["ComfyRoot"].Text = Path.Combine(root, "ComfyUI");
-            string encoders = Path.Combine(root, "models", "text_encoders");
-            if (Directory.Exists(encoders))
-                paths["Encoder"].Text = Directory.GetFiles(encoders, "*.safetensors").FirstOrDefault() ?? "";
+            var encoders = new[] { Path.Combine(root, "models", "text_encoders"), Path.Combine(root, "ComfyUI", "models", "text_encoders") }
+                .Where(Directory.Exists).SelectMany(p => Directory.GetFiles(p)).Where(p => new[] { ".safetensors", ".gguf", ".pt", ".pth" }.Contains(Path.GetExtension(p).ToLowerInvariant())).ToArray();
+            if (encoders.Length == 1) paths["Encoder"].Text = encoders[0];
             string settings = Path.Combine(root, "local", "launcher.settings.xml");
             if (loadSavedSettings && File.Exists(settings))
             {
                 try
                 {
+                    restoringSettings = true;
                     var doc = XDocument.Load(settings);
                     foreach (var item in paths)
                     {
@@ -267,9 +443,13 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                     if (mode != null) trainingMode.SelectedIndex = mode.Value == ExplicitMode ? 4 : mode.Value == "numeric_scores" ? 0 : mode.Value == "aligned_token_identity_v1" ? 2 : mode.Value == "monotone_token_identity_v1" ? 3 : 1;
                     var policy = doc.Root.Element("SelectionPolicy");
                     if (policy != null) allRows.Checked = policy.Value == "all_rows";
+                    var updates = doc.Root.Element("AutoCheckUpdates");
+                    if (updates != null) autoUpdate.Checked = updates.Value != "false";
                 }
                 catch (Exception ex) { Append("无法读取上次设置：" + ex.Message); }
+                finally { restoringSettings = false; }
             }
+            RefreshPathHints();
         }
 
         Dictionary<string, string> Snapshot()
@@ -277,6 +457,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             var snapshot = paths.ToDictionary(p => p.Key, p => p.Value.Text.Trim());
             snapshot["TrainingMode"] = trainingMode.SelectedIndex == 4 ? ExplicitMode : trainingMode.SelectedIndex == 3 ? "monotone_token_identity_v1" : trainingMode.SelectedIndex == 2 ? "aligned_token_identity_v1" : trainingMode.SelectedIndex == 1 ? "preference_only" : "numeric_scores";
             snapshot["SelectionPolicy"] = allRows.Checked ? "all_rows" : "one_per_group";
+            snapshot["AutoCheckUpdates"] = autoUpdate.Checked ? "true" : "false";
             return snapshot;
         }
 
@@ -309,6 +490,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             foreach (var control in alignedFields) control.Enabled = experimental && !busy;
             modeSummary.Text = transport ? "实验：原始 H3 数据 → CPU 变长单调映射 → 仅语义桥 → 固定强度辅助诊断（不是视频质量）" : aligned ? "实验：原始 H3 数据 → CPU 等长 token 对齐 → 仅语义桥 → 固定强度辅助诊断（不是视频质量）" : preference ? "无评分偏好对 → 仅语义桥 → CPU 权重检查 → validation 诊断（不是视频质量）"
                 : "真实 H3 编码 → 语义桥 + JEV 训练 → 权重验证与评估（原流程）";
+            RefreshPathHints();
             if (!changeDefaults) return;
             if (new[] { "author_v1.json", "preference_v1.json", "experimental_aligned_token_v1.json", "experimental_monotone_token_v1.json" }.Any(name => String.Equals(paths["Config"].Text, Path.Combine(root, "configs", name), StringComparison.OrdinalIgnoreCase)))
                 paths["Config"].Text = Path.Combine(root, "configs", transport ? "experimental_monotone_token_v1.json" : aligned ? "experimental_aligned_token_v1.json" : preference ? "preference_v1.json" : "author_v1.json");
@@ -318,12 +500,23 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 && (preparedName.StartsWith("aligned_", StringComparison.OrdinalIgnoreCase) || preparedName.StartsWith("transport_", StringComparison.OrdinalIgnoreCase));
             if (experimental && autoPrepared && ((transport && preparedName.StartsWith("aligned_", StringComparison.OrdinalIgnoreCase)) || (aligned && preparedName.StartsWith("transport_", StringComparison.OrdinalIgnoreCase))))
                 paths["PreparedDirectory"].Text = NewPreparedPath(transport);
-            string oldDataset = Path.Combine(root, "local", preference ? "wushu_pairs.npz" : "preference_pairs.npz");
-            if (String.Equals(paths["Dataset"].Text, oldDataset, StringComparison.OrdinalIgnoreCase))
-                paths["Dataset"].Text = Path.Combine(root, "local", preference ? "preference_pairs.npz" : "wushu_pairs.npz");
+            string dataset = paths["Dataset"].Text;
+            if (String.Equals(Path.GetDirectoryName(dataset), Path.Combine(root, "local"), StringComparison.OrdinalIgnoreCase)
+                && (Path.GetFileName(dataset).StartsWith("preference_") || Path.GetFileName(dataset).StartsWith("wushu_")))
+                paths["Dataset"].Text = NewDatasetPath(preference);
             string legacyPairs = Path.Combine(root, "models", "wushu_bridge", "datasets", "wushu_pairs_v1_pairs.jsonl");
-            if (preference && String.Equals(paths["Pairs"].Text, legacyPairs, StringComparison.OrdinalIgnoreCase)) paths["Pairs"].Text = "";
-            if (!preference && String.IsNullOrWhiteSpace(paths["Pairs"].Text)) paths["Pairs"].Text = legacyPairs;
+            bool examplePairs = paths["Pairs"].Text == PreferencePairs();
+            if (preference && (paths["Pairs"].Text == AuthorPairs() || paths["Pairs"].Text == legacyPairs || String.IsNullOrWhiteSpace(paths["Pairs"].Text)))
+            {
+                paths["Pairs"].Text = PreferencePairs();
+                paths["SplitManifest"].Text = PreferenceSplit();
+            }
+            if (!preference && (examplePairs || String.IsNullOrWhiteSpace(paths["Pairs"].Text)))
+            {
+                paths["Pairs"].Text = AuthorPairs();
+                if (paths["SplitManifest"].Text == PreferenceSplit()) paths["SplitManifest"].Text = "";
+            }
+            RefreshPathHints();
         }
 
         void SaveSettings(Dictionary<string, string> settings)
@@ -735,6 +928,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 string logPath = Path.Combine(logDir, DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".log");
                 logFile = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true };
                 cancelled = false; busy = true; activeRun = settings["RunDirectory"]; activeMode = settings["TrainingMode"];
+                updateButton.Enabled = false;
                 foreach (var control in editable) control.Enabled = false;
                 stop.Enabled = true;
                 Append("\n日志：" + logPath);
@@ -761,6 +955,13 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 if (cancelled) throw new OperationCanceledException();
                 status.Text = settings["TrainingMode"] == ExplicitMode ? (checkOnly ? "显式目标 CPU 校验通过 · 未创建模型或输出" : "CPU 拟合与重载检查完成 · 未验证视频质量或泛化") : checkOnly ? "环境检查通过 · 编码器与对齐资格在数据阶段验证" : "任务完成 · 权重与辅助表征诊断已保存；未验证视频质量";
                 Append(status.Text);
+                if (!checkOnly)
+                {
+                    string summary = InferenceSummary(settings["RunDirectory"]);
+                    Append(summary);
+                    Append("完整设置见输出目录的 模型使用说明.md 与 inference_settings.json；分发模型时请一并提供。");
+                    status.Text = "训练完成 · " + summary;
+                }
             }
             catch (OperationCanceledException)
             {
@@ -774,10 +975,24 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             finally
             {
                 busy = false; stop.Enabled = false;
+                updateButton.Enabled = true;
                 foreach (var control in editable) control.Enabled = true;
                 UpdateTrainingMode(false);
                 lock (processLock) { if (logFile != null) { logFile.Dispose(); logFile = null; } }
             }
+        }
+
+        internal static string InferenceSummary(string directory)
+        {
+            string path = Path.Combine(directory, "inference_settings.json");
+            if (!File.Exists(path)) return "未找到推理说明，请先核对模型契约，不要猜 alpha";
+            var report = ReadMap(path);
+            var settings = ObjectMap(report["settings"]);
+            bool fixedAlpha = Convert.ToString(report["status"]) == "fixed_contract";
+            return (fixedAlpha ? "固定 alpha=" : "试用起点 alpha=")
+                + Convert.ToDouble(settings["alpha"]).ToString("G", CultureInfo.InvariantCulture)
+                + (fixedAlpha ? "（按权重契约）" : "（未视频校准）")
+                + " · magnitude=" + Convert.ToString(settings["magnitude_match"]);
         }
 
         static string StageName(string stage)
@@ -829,6 +1044,8 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
             info.EnvironmentVariables["PYTHONUTF8"] = "1";
             info.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
             info.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
+            info.EnvironmentVariables["PYTHONNOUSERSITE"] = "1";
+            info.EnvironmentVariables["PYTHONDONTWRITEBYTECODE"] = "1";
             return info;
         }
 
@@ -856,6 +1073,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
 
         void OnClosing(object sender, FormClosingEventArgs e)
         {
+            if (installingUpdate) { e.Cancel = true; return; }
             if (busy)
             {
                 e.Cancel = true;
@@ -915,8 +1133,20 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 form.Show();
                 Application.DoEvents();
                 var settings = form.Snapshot();
-                if (settings["TrainingMode"] != "preference_only" || !String.IsNullOrWhiteSpace(settings["Pairs"]))
+                if (settings["TrainingMode"] != "preference_only" || settings["Pairs"] != form.PreferencePairs() || settings["SplitManifest"] != form.PreferenceSplit()
+                    || !File.Exists(settings["Pairs"]) || !File.Exists(settings["SplitManifest"]) || !File.Exists(settings["Config"]))
                     throw new Exception("Portable first-run preference defaults test failed");
+                if (settings["Python"] != Path.Combine(form.root, "python", "python.exe") || settings["ComfyRoot"] != Path.Combine(form.root, "ComfyUI")
+                    || !settings["Dataset"].StartsWith(Path.Combine(form.root, "local")) || !settings["RunDirectory"].StartsWith(Path.Combine(form.root, "runs"))
+                    || !form.pathHints["Pairs"].Text.Contains("格式示例") || !form.Text.Contains("By T8star"))
+                    throw new Exception("Portable paths, example notice or branding failed");
+                form.trainingMode.SelectedIndex = 0;
+                if (form.paths["Pairs"].Text != form.AuthorPairs() || !form.paths["Config"].Text.EndsWith("author_v1.json") || form.paths["SplitManifest"].Text != "")
+                    throw new Exception("Bundled author data mode defaults failed");
+                form.trainingMode.SelectedIndex = 1;
+                if (form.paths["Pairs"].Text != form.PreferencePairs() || form.paths["SplitManifest"].Text != form.PreferenceSplit())
+                    throw new Exception("Preference sample restoration failed");
+                results.Add("First-run relative bundle paths, paired sample defaults and notices, author-676/preference mode switching, By T8star branding: passed; software checks only");
                 if (form.alignedFields.Any(c => c.Enabled)) throw new Exception("Experimental fields must be disabled in ordinary modes");
                 settings["TrainingMode"] = "numeric_scores";
                 settings["Dataset"] = Path.Combine(output, "test dataset.npz");
@@ -1073,6 +1303,55 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 if (restored.Snapshot()["SelectionPolicy"] != "all_rows" || !restored.allRows.Enabled)
                     throw new Exception("Saved all-rows option restore failed");
             results.Add("Saved all-rows GUI option restore: passed");
+            string updateFixture = Path.Combine(output, "updater-settings-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(updateFixture);
+            File.WriteAllText(Path.Combine(updateFixture, "app_version.json"), "{\"version\":\"0.2.1\",\"runtime_epoch\":1}");
+            using (var updateForm = new Launcher(updateFixture, false)) {
+                if (!updateForm.autoUpdate.Checked || updateForm.ApplicationVersion() != "0.2.1" || updateForm.updateButton.Text != "检查更新")
+                    throw new Exception("Updater defaults/version UI failed");
+                updateForm.busy = true;
+                updateForm.UpdateApplication(true).GetAwaiter().GetResult();
+                if (updateForm.updating) throw new Exception("Update installation must be blocked while training");
+                updateForm.busy = false;
+                updateForm.autoUpdate.Checked = false;
+                updateForm.SaveSettings(updateForm.Snapshot());
+            }
+            using (var updateForm = new Launcher(updateFixture))
+                if (updateForm.autoUpdate.Checked) throw new Exception("Auto-check preference restore failed");
+            results.Add("Updater UI: current version, default startup check, persistent opt-out, install blocked while training; no network/install in self-test: passed");
+            string usageFixture = Path.Combine(output, "usage-summary-synthetic");
+            Directory.CreateDirectory(usageFixture);
+            string usagePath = Path.Combine(usageFixture, "inference_settings.json");
+            File.WriteAllText(usagePath, "{\"status\":\"fixed_contract\",\"settings\":{\"alpha\":1,\"magnitude_match\":\"per_token\"}}");
+            if (!InferenceSummary(usageFixture).Contains("固定 alpha=1")) throw new Exception("Fixed alpha summary failed");
+            File.WriteAllText(usagePath, "{\"status\":\"unvalidated_starting_point\",\"settings\":{\"alpha\":0.12,\"magnitude_match\":\"none\"}}");
+            if (!InferenceSummary(usageFixture).Contains("试用起点 alpha=0.12") || !InferenceSummary(usageFixture).Contains("未视频校准"))
+                throw new Exception("Starting alpha must not be presented as calibrated/fixed");
+            results.Add("Completion summary distinguishes fixed alpha=1 from uncalibrated starting alpha=0.12; no video-quality inference: passed (synthetic JSON)");
+            string fixtureId = Guid.NewGuid().ToString("N");
+            string portableFixture = Path.Combine(output, "portable-paths-中文 space-" + fixtureId);
+            Directory.CreateDirectory(Path.Combine(portableFixture, "models", "text_encoders"));
+            string firstEncoder = Path.Combine(portableFixture, "models", "text_encoders", "fake-path-test-only.safetensors");
+            File.WriteAllText(firstEncoder, "Synthetic path discovery fixture; not a model");
+            using (var form = new Launcher(portableFixture, false))
+                if (form.paths["Encoder"].Text != firstEncoder) throw new Exception("Single encoder discovery failed");
+            File.WriteAllText(Path.Combine(portableFixture, "models", "text_encoders", "second-fake-path-only.gguf"), "Synthetic path fixture");
+            using (var form = new Launcher(portableFixture, false))
+                if (form.paths["Encoder"].Text != "") throw new Exception("Multiple encoders must require user choice");
+            using (var form = new Launcher(portableFixture, false))
+            {
+                form.paths["Pairs"].Text = Path.Combine(portableFixture, "local", "my_dataset", "pairs.jsonl");
+                form.paths["SplitManifest"].Text = Path.Combine(portableFixture, "local", "my_dataset", "split_manifest.json");
+                form.SaveSettings(form.Snapshot());
+            }
+            string relocated = Path.Combine(output, "relocated-中文 space-" + fixtureId);
+            Directory.CreateDirectory(Path.Combine(relocated, "local"));
+            File.Copy(Path.Combine(portableFixture, "local", "launcher.settings.xml"), Path.Combine(relocated, "local", "launcher.settings.xml"), true);
+            using (var form = new Launcher(relocated))
+                if (form.paths["Pairs"].Text != Path.Combine(relocated, "local", "my_dataset", "pairs.jsonl")
+                    || form.paths["SplitManifest"].Text != Path.Combine(relocated, "local", "my_dataset", "split_manifest.json"))
+                    throw new Exception("Saved relative paths did not relocate");
+            results.Add("Encoder discovery chooses only an unambiguous file; relative saved user data paths survive relocation with Chinese/spaces: passed; fake path fixtures, no model execution");
             SelfTestExplicit(python, output, results);
             File.WriteAllText(Path.Combine(output, "self-test.json"), new JavaScriptSerializer().Serialize(results), new UTF8Encoding(false));
             return 0;

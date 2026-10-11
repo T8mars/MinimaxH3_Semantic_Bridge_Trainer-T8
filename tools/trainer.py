@@ -101,6 +101,9 @@ def main(argv=None):
     verify.add_argument("--judge", default=str(ROOT / "models/wushu_bridge/wushu_jev_wushu_v1.safetensors"))
     verify.add_argument("--report")
     verify.add_argument("--bridge-only", action="store_true", help="Verify only the bridge; do not load or require a judge")
+    usage = sub.add_parser("usage", help="Export model-bound deployment instructions without training")
+    usage.add_argument("--bridge", required=True)
+    usage.add_argument("--output-dir", required=True, help="Directory for inference_settings.json and deployment guide")
     evaluate = sub.add_parser("evaluate", help="Detailed holdout diagnostics for a saved bridge")
     evaluate.add_argument("dataset")
     evaluate.add_argument("--run", required=True)
@@ -242,6 +245,11 @@ def main(argv=None):
                                        video_feedback_root=args.video_feedback_root,
                                        init_bridge=args.init_bridge,
                                        init_bridge_sha256=args.init_bridge_sha256), indent=2))
+    elif args.command == "usage":
+        from wushu_bridge.bridge_model import load_bridge
+        from wushu_bridge.inference_guidance import write_inference_guidance
+        report = write_inference_guidance(args.bridge, load_bridge(args.bridge), output_dir=args.output_dir)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
     elif args.command == "check-dataset":
         receipt = json.loads(Path(args.dataset + ".receipt.json").read_text(encoding="utf-8"))
         print("Verifying dataset and encoder hashes", flush=True)

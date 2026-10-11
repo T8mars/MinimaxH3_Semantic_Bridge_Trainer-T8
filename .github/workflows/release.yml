@@ -1,0 +1,56 @@
+name: Build and publish Windows trainer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trainer-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.10'
+      - name: Test updater (synthetic software tests only)
+        run: python -B -m unittest discover -s tests -p test_updater.py -v
+      - name: Compile launcher
+        shell: pwsh
+        run: ./tools/build_launcher.ps1
+      - name: Build verified NoPython ZIP
+        shell: pwsh
+        env:
+          RELEASE_VERSION: 0.2.${{ github.run_number }}
+        run: python -B tools/build_light_release.py --output dist --version $env:RELEASE_VERSION --commit $env:GITHUB_SHA
+      - name: Publish Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: 0.2.${{ github.run_number }}
+        run: |
+          $tag = "v$env:RELEASE_VERSION"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { Write-Host "Release already published; keeping existing assets."; exit 0 }
+          @'
+          ## 中文
+          Windows 轻量训练器／整合包程序更新：不含 Python、ComfyUI、大模型和视频。
+          下载 Windows-NoPython.zip，解压后运行 WushuBridge-Trainer.exe。新用户选择现有 Python 3.10+ 和 H3 ComfyUI 环境；已有新版完整包在启动器点“安装更新”。
+          内置676对公开评分文本、8对格式示例、训练集制作及 Agent 交接文档。训练后自动导出模型专属参数说明。更新保留运行环境、模型、用户数据、训练输出与已有配置。
+          SHA256SUMS.txt 为校验值；update.json 供启动器检查更新。软件测试不代表视频质量验证。
+
+          ## English
+          Lightweight Windows trainer and full-bundle app update. No Python, ComfyUI, large models or videos included.
+          Extract Windows-NoPython.zip and launch WushuBridge-Trainer.exe. New users supply Python 3.10+ and an H3-capable ComfyUI environment; full-bundle users update in the launcher.
+          Includes public starter data, dataset instructions, Agent handoff and model-specific inference guides. Updates preserve runtimes, models, user data, outputs and existing settings/configs.
+          SHA256SUMS.txt contains checksums; update.json is used by the updater. Software tests are not video-quality evidence.
+          '@ | Set-Content -LiteralPath release-notes.md -Encoding utf8
+          gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "$tag · By T8star · Windows NoPython" --notes-file release-notes.md --latest dist/*.zip dist/update.json dist/SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

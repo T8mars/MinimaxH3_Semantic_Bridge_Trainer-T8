@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "date": "2026-10-11",
+  "author_numeric_dataset": {
+    "path": "datasets/wushu_pairs_v1_pairs.jsonl",
+    "pairs": 676,
+    "sha256": "daee96dc2f34c5950e62815b709a7c11e49502f884e7dc06768e881452bdb880",
+    "source": "https://github.com/314899085-dotcom/ComfyUI-H3-WushuBridge",
+    "kind": "author_public_numeric_text_rules_not_676_video_labels"
+  },
+  "preference_example": {
+    "path": "datasets/preference_example.jsonl",
+    "pairs": 8,
+    "sha256": "e498510b74ea75ce488b6087a11df513d713246a74455968cd88ef2fffeb66bd",
+    "kind": "original_authored_text_format_examples_only",
+    "video_quality_validated": false
+  },
+  "old_release_model": {
+    "path": "models/wushu_bridge/semantic_bridge_release.safetensors",
+    "sha256": "d4303d77e1ff96b678484d891308eeeb261b919d9e6498610a2bb89f7aeaa9a9",
+    "source": "https://huggingface.co/t8star/semantic_bridge_T8-comic-combat"
+  },
+  "community_original": {
+    "path": "models/semantic_bridge/MiniMaxH3_SemanticBridge_v1.safetensors",
+    "sha256": "ac0dc8ac05f545ebdee12e2fcebe4515b049f9cfd9558eb4887a9bf3fd6d562e",
+    "source": "https://huggingface.co/speach1sdef178/MiniMax-H3-Semantic-Bridge",
+    "revision": "b9fe58ba6f428d990a59f20f09f719c8fbc67f7d",
+    "is_minimax_official": false
+  }
+}

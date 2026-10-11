@@ -16,8 +16,8 @@ MiniMax H3 的 D = 5120，metadata 里可能带 ``minimax_keyframes`` /
     pred      = magnitude_match(pred, h)        # per_token / global / none
     hybrid    = h + alpha * (pred - h)
 
-``alpha`` 小（0.05~0.25）时等价于沿"武打逻辑完备"方向做温和引导；alpha=1 则
-完全替换，容易跑出文本编码器原生流形，不推荐。
+``alpha`` 是混合强度。无固定契约的普通权重通常从小强度试用；带固定应用契约的
+权重必须遵循自身参数（例如旧 Sentence75 固定为 1），不能套用其他权重的数值。
 """
 
 from __future__ import annotations

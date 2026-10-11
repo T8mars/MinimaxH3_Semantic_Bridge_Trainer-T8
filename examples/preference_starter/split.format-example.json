@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "split_unit": "group_id",
+  "splits": {
+    "train": [
+      "format_scene_001",
+      "format_scene_002",
+      "format_scene_003",
+      "format_scene_004",
+      "format_scene_005",
+      "format_scene_006"
+    ],
+    "validation": [
+      "format_scene_007"
+    ],
+    "test": [
+      "format_scene_008"
+    ]
+  }
+}

@@ -602,8 +602,13 @@ def fit_stage(kind, ds, splits, cfg, folder, signature, resume=False, stop_after
                 "chunk_tokens": 0, "auto_alpha": False, "guard": False,
                 "allow_dim_mismatch": False,
             }
+        from .inference_guidance import make_inference_guidance, write_inference_guidance
+        model.cfg.extra["training_application"] = {
+            "alpha_min": cfg.alpha_min, "alpha_max": cfg.alpha_max, "magnitude_mode": cfg.magnitude_mode}
+        model.cfg.extra["inference_guidance"] = make_inference_guidance(model)
         save_bridge(str(folder / "bridge.partial.safetensors"), model)
         os.replace(folder / "bridge.partial.safetensors", folder / "bridge.safetensors")
+        report["inference_guidance"] = write_inference_guidance(folder / "bridge.safetensors", model)
     else:
         logits, labels = judge_predictions(model, ds, splits["calibration"], cfg)
         temp, bias, _ = calibrate_temperature(logits, labels)

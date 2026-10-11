@@ -293,7 +293,7 @@ def run(manifest_path, cfg, output=None, execute=False, manifest_sha=None):
     manifest, pairs = load_manifest(manifest_path, cfg)
     sources = input_bindings(manifest, manifest_path, frozen_manifest_sha)
     verify_bindings(sources)
-    code = {str(p): sha(p) for p in (Path(__file__), ROOT/"wushu_bridge/bridge_model.py", ROOT/"wushu_bridge/apply.py")}
+    code = {str(p): sha(p) for p in (Path(__file__), ROOT/"wushu_bridge/bridge_model.py", ROOT/"wushu_bridge/apply.py", ROOT/"wushu_bridge/inference_guidance.py")}
     plan = dict(kind="explicit_train_only_fit", evidence_class=manifest["evidence_class"],
         manifest=dict(path=str(Path(manifest_path).resolve()), sha256=frozen_manifest_sha), code=code,
         input_bindings=sources,
@@ -366,6 +366,8 @@ def run(manifest_path, cfg, output=None, execute=False, manifest_sha=None):
                   steps=cfg.steps, weights=dict(path=str(weight), sha256=sha(weight)),
                   reload_checks=errors, final_pairs=evaluate(reloaded, pairs, cfg),
                   video_quality_evidence=False, generalization_evidence=False, val_test_loaded=False)
+    from wushu_bridge.inference_guidance import write_inference_guidance
+    result["inference_guidance"] = write_inference_guidance(weight, reloaded)
     write_json(folder/"RESULT.json", result)
     return result
 
