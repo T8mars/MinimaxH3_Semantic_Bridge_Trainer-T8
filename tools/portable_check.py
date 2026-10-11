@@ -42,6 +42,8 @@ def main():
     from wushu_bridge.trainer_engine import RunConfig
     config = RunConfig(**json.loads((ROOT / 'configs/preference_v1.json').read_text(encoding='utf-8')))
     config.validate()
+    from wushu_bridge.source_revision import revision
+    source_commit = revision(ROOT)
     from wushu_bridge.inference_guidance import make_inference_guidance
     from types import SimpleNamespace
     fixture = SimpleNamespace(cfg=SimpleNamespace(extra={}))
@@ -63,6 +65,7 @@ def main():
                 raise ValueError('Different file hash: ' + relative)
             count += 1
     print(json.dumps({'status': 'passed', 'python': sys.version.split()[0],
+                      'source_commit': source_commit,
                       'bundled_dependency_versions': versions, 'cuda_available': torch.cuda.is_available(),
                       'author_numeric_pairs': len(numeric), 'format_example_pairs': len(sample),
                       'format_example_splits': {key: len(value) for key, value in splits.items()},

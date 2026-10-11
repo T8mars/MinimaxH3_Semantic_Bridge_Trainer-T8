@@ -7,11 +7,15 @@ import sys
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from updater import REPOSITORY, RUNTIME_EPOCH, TOP_FILES, MANAGED_DIRS, SEED_DIRS, safe_name, digest, version, write_json, verify_archive
+from wushu_bridge.source_revision import valid_commit
 
 
 def build(root, output, release_version, commit):
     version(release_version)
+    if not valid_commit(commit):
+        raise ValueError("Release source commit must be one full Git SHA")
     root, output = Path(root).resolve(), Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     files = {}

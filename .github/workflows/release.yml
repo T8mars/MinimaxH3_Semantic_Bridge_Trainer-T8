@@ -22,6 +22,8 @@ jobs:
           python-version: '3.10'
       - name: Test updater (synthetic software tests only)
         run: python -B -m unittest discover -s tests -p test_updater.py -v
+      - name: Test portable source identity
+        run: python -B -m unittest discover -s tests -p test_source_revision.py -v
       - name: Compile launcher
         shell: pwsh
         run: ./tools/build_launcher.ps1
@@ -30,6 +32,19 @@ jobs:
         env:
           RELEASE_VERSION: 0.2.${{ github.run_number }}
         run: python -B tools/build_light_release.py --output dist --version $env:RELEASE_VERSION --commit $env:GITHUB_SHA
+      - name: Install CPU software-test dependencies
+        shell: pwsh
+        run: |
+          python -m pip install torch==2.7.0 --index-url https://download.pytorch.org/whl/cpu
+          if ($LASTEXITCODE -ne 0) { throw 'CPU test dependency installation failed' }
+          python -m pip install numpy==1.26.4 safetensors==0.4.3
+          if ($LASTEXITCODE -ne 0) { throw 'Test dependency installation failed' }
+      - name: Exercise extracted release train resume export and diagnostics
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem -LiteralPath dist -Filter '*-Windows-NoPython.zip').FullName
+          python -B tools/release_smoke_test.py --archive $zip --work-dir dist/smoke
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged CLI pipeline failed; release not published' }
       - name: Publish Release
         shell: pwsh
         env:

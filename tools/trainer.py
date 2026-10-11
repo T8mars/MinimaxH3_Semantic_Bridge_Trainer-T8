@@ -18,23 +18,7 @@ for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
 
 from wushu_bridge.trainer_data import encode_pairs, inspect_pairs, partition_text_pairs, read_pairs, sha256, validate_dataset, write_json
-
-
-def revision(path):
-    # A portable distribution contains source and a revision receipt, not Git.
-    receipt = Path(path) / "SOURCE_REVISION.txt"
-    if receipt.is_file():
-        value = receipt.read_text(encoding="utf-8").strip()
-        if len(value) == 40 and all(c in "0123456789abcdef" for c in value):
-            return value
-        if value == "unversioned":
-            return value
-        raise ValueError("Invalid SOURCE_REVISION.txt; expected one Git SHA or unversioned")
-    try:
-        p = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True)
-        return p.stdout.strip() if p.returncode == 0 else "unversioned"
-    except FileNotFoundError:
-        return "unversioned"
+from wushu_bridge.source_revision import revision
 
 
 def code_hash():

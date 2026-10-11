@@ -938,6 +938,7 @@ print('Prepared source/artifact/tokenizer receipt integrity: OK; resume also req
                 {
                     if (settings["TrainingMode"] == ExplicitMode) { RunExplicit(settings, plan, checkOnly, logPath); return; }
                     Run(settings["Python"], new[] { "-u", "-c", EnvironmentProbe }, "检查 Python / PyTorch / GPU");
+                    Run(settings["Python"], new[] { "-u", "-c", "import sys; from wushu_bridge.source_revision import revision; print('Trainer source: '+revision(sys.argv[1]))", root }, "检查训练器版本记录");
                     Run(settings["Python"], new[] { "-u", "-c", "import json,sys; from wushu_bridge.trainer_engine import RunConfig; c=RunConfig(**json.load(open(sys.argv[1],encoding='utf-8'))); c.validate(); print(c)", settings["Config"] }, "检查训练参数");
                     if ((settings["TrainingMode"] == "aligned_token_identity_v1" || settings["TrainingMode"] == "monotone_token_identity_v1") && Directory.Exists(settings["PreparedDirectory"]))
                         Run(settings["Python"], new[] { "-u", "-c", PreparedProbe, settings["PreparedDirectory"], settings["Dataset"], settings["Pairs"], settings["Encoder"], settings["SplitManifest"], settings["ComfyRoot"], settings["TrainingMode"] == "monotone_token_identity_v1" ? "token_id_monotone_transport_v1" : "equal_length_edit_blocks_v1", !String.IsNullOrWhiteSpace(settings["VideoFeedbackRoot"]) ? "all_unique_scene_families" : settings["SelectionPolicy"] }, "CPU 检查实验准备回执与原始输入（复用，不覆盖）");
