@@ -1,5 +1,7 @@
 # Agent交接：制作用户自己的数据并完成语义桥训练
 
+**版本提示：完整包自带Python/ComfyUI；GitHub NoPython轻量版需先选择已有Python 3.10+及H3 ComfyUI环境。文中 `.\python\python.exe` 命令在轻量版需替换为选定的Python路径。**
+
 ## 目标与入口
 
 用户把本包交给你后，按其主题制作bad/good文本偏好数据、检查分组、真实编码和训练Semantic Bridge，最后交付权重与复现说明。先读根目录`AGENTS.md`、`训练集制作.md`和`如何训练.md`。使用本包Python，保留原始文件。

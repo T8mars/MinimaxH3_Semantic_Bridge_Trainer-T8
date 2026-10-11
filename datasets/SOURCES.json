@@ -26,5 +26,6 @@
     "source": "https://huggingface.co/speach1sdef178/MiniMax-H3-Semantic-Bridge",
     "revision": "b9fe58ba6f428d990a59f20f09f719c8fbc67f7d",
     "is_minimax_official": false
-  }
+  },
+  "weight_reference_note": "Model entries are provenance references for full-bundle extras. GitHub NoPython assets do not include weight files; download models separately from their source repositories."
 }

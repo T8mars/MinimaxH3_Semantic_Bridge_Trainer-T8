@@ -1,19 +1,16 @@
-T8 Semantic Bridge 训练器整合包 · By T8star
+T8 Semantic Bridge 训练器 · By T8star
 
-保留整个解压文件夹。Python、依赖、EXE、基础数据、Skill和Agent交接都在里面。
+保留整个解压目录，双击“启动训练器.cmd”或WushuBridge-Trainer.exe。
 
-自己操作：先打开“如何训练.md”，双击“启动训练器.cmd”。
-自己做训练集：打开“训练集制作.md”；基础格式见datasets。
-让Agent做：把“给AGENT的任务.txt”全文复制给Agent，并让它访问本文件夹。
-环境检查：双击“检查整合包.cmd”。
+完整包：内置Python、训练依赖与ComfyUI编码源码，大部分路径自动填写。
+GitHub Release的NoPython轻量包：不含Python、ComfyUI、模型和视频。首次须在界面选择已有Python 3.10+（PyTorch 2.3+、NumPy、safetensors）、能运行H3编码的ComfyUI，以及真实H3文本编码器。点击“检查环境”核对；不要把WindowsApps的Python占位程序当成已安装环境。
 
-首次还需要与实际H3推理一致的文本编码器权重，可放入models/text_encoders。
-作者676对用数值评分模式；自建bad/good数据用无评分仅语义桥模式。
-首次NPZ填尚不存在的保存路径；程序会编码生成，不用自己先制作。
+自己训练：看“如何训练.md”。制作数据：看“训练集制作.md”。
+让Agent做：复制“给AGENT的任务.txt”，并让它访问本目录。
+作者676对用数值评分模式；自建bad/good用无评分仅语义桥模式。
+8对内置数据仅为格式示例。正式自训需要自己的JSONL、配套分组与真实编码器。
+本项目训练Semantic Bridge，不训练视频LoRA。
 
-本包训练Semantic Bridge，不训练视频LoRA。
-八条格式示例只是教学和软件检查；历史视频只有局部相对改善，不能代表普遍成功。
-
-首次大部分路径已自动填写。正式自训只需选择真实H3文本编码器、更换自己的JSONL与配套分组。
-8对内置数据只是格式示例；作者676对可在数值评分模式自动选择。
-所有社媒与入口在README.md，界面底部也可直接点击。
+默认启动检查更新，空闲时点“安装更新”即可校验、安装并重开。
+更新保留Python、ComfyUI、模型、视频、local/、runs/、路径设置与已有配置。
+更新与恢复见docs/自动更新.md；社媒入口在README.md和界面底部。
