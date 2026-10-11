@@ -1,5 +1,6 @@
 """Software regressions, including real Windows file-sharing locks."""
 import ctypes
+import io as streams
 import os
 from pathlib import Path
 import subprocess
@@ -67,6 +68,24 @@ class CheckpointTests(unittest.TestCase):
                 io.save_checkpoint(self.path, {"epoch": 4})
         self.assertEqual(self.path.read_bytes(), original)
         self.assertFalse(list(self.root.glob("*.pending")))
+
+    def test_english_windows_console_cannot_interrupt_retry(self):
+        raw = streams.BytesIO()
+        console = streams.TextIOWrapper(raw, encoding='cp1252', errors='strict')
+        real = os.replace
+        attempts = []
+        def replace(a, b):
+            attempts.append(a)
+            if len(attempts) == 1:
+                exc = PermissionError('sharing lock'); exc.winerror = 5
+                raise exc
+            return real(a, b)
+        with patch('sys.stdout', console), patch.object(io.os, 'replace', side_effect=replace), patch.object(io.time, 'sleep'):
+            io.save_checkpoint(self.path, {'epoch': 124})
+        console.flush()
+        self.assertIn(b'Checkpoint temporarily busy', raw.getvalue())
+        console.detach()
+        self.assertEqual(torch.load(self.path, weights_only=True)['epoch'], 124)
 
     def test_run_lock_rejects_second_writer_then_releases(self):
         with io.training_lock(self.root):

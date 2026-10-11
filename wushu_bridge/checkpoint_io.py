@@ -8,6 +8,20 @@ import time
 import warnings
 
 
+def _busy_notice():
+    # A diagnostic must never interrupt recovery on an English Windows console
+    # or when the launcher has closed its log pipe.
+    try:
+        print("断点文件暂被占用，正在重试保存；上一份断点保持完整。", flush=True)
+    except UnicodeError:
+        try:
+            print("Checkpoint temporarily busy; retrying. Previous checkpoint is intact.", flush=True)
+        except (OSError, ValueError):
+            pass
+    except (OSError, ValueError):
+        pass
+
+
 def replace_with_retry(source, destination, timeout=10.0):
     """Keep the previous file intact while Windows readers release their handles."""
     deadline = time.monotonic() + timeout
@@ -22,7 +36,7 @@ def replace_with_retry(source, destination, timeout=10.0):
             if not transient or time.monotonic() >= deadline:
                 raise
             if not announced:
-                print("断点文件暂被占用，正在重试保存；上一份断点保持完整。", flush=True)
+                _busy_notice()
                 announced = True
             time.sleep(min(.25, max(0, deadline - time.monotonic())))
 
